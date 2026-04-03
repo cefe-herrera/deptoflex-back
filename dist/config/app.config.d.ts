@@ -4,11 +4,13 @@ declare const _default: (() => {
     allowedOrigins: string[];
     url: string;
     googleClientId: string | undefined;
+    appleClientId: string | undefined;
 }) & import("@nestjs/config").ConfigFactoryKeyHost<{
     port: number;
     nodeEnv: string;
     allowedOrigins: string[];
     url: string;
     googleClientId: string | undefined;
+    appleClientId: string | undefined;
 }>;
 export default _default;

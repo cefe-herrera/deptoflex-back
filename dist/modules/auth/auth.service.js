@@ -185,6 +185,9 @@ let AuthService = class AuthService {
             user: { id: user.id, email: user.email, roles },
         };
     }
+    async appleLogin(dto, meta) {
+        throw new common_1.BadRequestException('Apple Sign-In is not yet implemented');
+    }
     async refresh(rawToken, meta) {
         const { refreshToken, expiresAt, userId } = await this.tokenService.rotateRefreshToken(rawToken, meta);
         const user = await this.prisma.user.findFirst({

@@ -48,6 +48,14 @@ export declare class AuthService {
             roles: string[];
         };
     }>;
+    appleLogin(dto: {
+        token: string;
+        firstName?: string;
+        lastName?: string;
+    }, meta: {
+        userAgent?: string;
+        ipAddress?: string;
+    }): Promise<void>;
     refresh(rawToken: string, meta: {
         userAgent?: string;
         ipAddress?: string;

@@ -16,6 +16,7 @@ import { RegisterDto } from './dto/register.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { AppleLoginDto } from './dto/apple-login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -55,6 +56,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   googleLogin(@Body() dto: GoogleLoginDto, @Req() req: Request) {
     return this.authService.googleLogin(dto, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+  }
+
+  @Public()
+  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Post('apple')
+  @HttpCode(HttpStatus.OK)
+  appleLogin(@Body() dto: AppleLoginDto, @Req() req: Request) {
+    return this.authService.appleLogin(dto, {
       userAgent: req.headers['user-agent'],
       ipAddress: req.ip,
     });

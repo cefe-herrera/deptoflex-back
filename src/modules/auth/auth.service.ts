@@ -163,6 +163,19 @@ export class AuthService {
     };
   }
 
+  async appleLogin(
+    dto: { token: string; firstName?: string; lastName?: string },
+    meta: { userAgent?: string; ipAddress?: string },
+  ) {
+    // TODO: npm install apple-signin-auth
+    // import appleSignin from 'apple-signin-auth';
+    // const payload = await appleSignin.verifyIdToken(dto.token, {
+    //   audience: this.configService.get<string>('app.appleClientId'),
+    // });
+
+    throw new BadRequestException('Apple Sign-In is not yet implemented');
+  }
+
   async refresh(rawToken: string, meta: { userAgent?: string; ipAddress?: string }) {
     const { refreshToken, expiresAt, userId } = await this.tokenService.rotateRefreshToken(rawToken, meta);
 

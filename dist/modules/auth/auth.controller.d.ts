@@ -4,6 +4,7 @@ import { RegisterDto } from './dto/register.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
+import { AppleLoginDto } from './dto/apple-login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -38,6 +39,7 @@ export declare class AuthController {
             roles: string[];
         };
     }>;
+    appleLogin(dto: AppleLoginDto, req: Request): Promise<void>;
     refresh(dto: RefreshTokenDto, req: Request): Promise<{
         accessToken: string;
         refreshToken: string;
