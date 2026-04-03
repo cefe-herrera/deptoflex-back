@@ -6,6 +6,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Redirect,
   Req,
 } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
@@ -72,9 +73,9 @@ export class AuthController {
 
   @Public()
   @Get('verify-email')
-  @HttpCode(HttpStatus.OK)
-  verifyEmailGet(@Query() query: VerifyEmailDto) {
-    return this.authService.verifyEmail(query);
+  @Redirect('https://deptoflex-front-jg6i.vercel.app/login', 302)
+  async verifyEmailGet(@Query() query: VerifyEmailDto) {
+    await this.authService.verifyEmail(query);
   }
 
   @Public()

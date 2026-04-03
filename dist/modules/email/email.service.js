@@ -26,7 +26,8 @@ let EmailService = EmailService_1 = class EmailService {
         this.fromEmail = this.configService.get('email.fromEmail') ?? 'onboarding@resend.dev';
     }
     async sendVerificationEmail(email, token) {
-        const magicLink = `http://localhost:3000/api/v1/auth/verify-email?token=${token}`;
+        const appUrl = this.configService.get('app.url');
+        const magicLink = `${appUrl}/api/v1/auth/verify-email?token=${token}`;
         try {
             const { data, error } = await this.resend.emails.send({
                 from: this.fromEmail,

@@ -15,8 +15,8 @@ export class EmailService {
     }
 
     async sendVerificationEmail(email: string, token: string) {
-        // Cambiamos a la URL del backend para que funcione directamente al hacer clic
-        const magicLink = `http://localhost:3000/api/v1/auth/verify-email?token=${token}`;
+        const appUrl = this.configService.get<string>('app.url');
+        const magicLink = `${appUrl}/api/v1/auth/verify-email?token=${token}`;
 
         try {
             const { data, error } = await this.resend.emails.send({

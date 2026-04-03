@@ -48,6 +48,7 @@ exports.validationSchema = Joi.object({
     R2_BUCKET: Joi.string().required(),
     R2_PUBLIC_BASE_URL: Joi.string().uri().required(),
     APP_ALLOWED_ORIGINS: Joi.string().default('http://localhost:3001'),
+    APP_URL: Joi.string().uri().default('http://localhost:3000'),
     RESEND_API_KEY: Joi.string().required(),
     EMAIL_FROM: Joi.string().email().default('onboarding@resend.dev'),
 });

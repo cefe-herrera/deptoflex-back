@@ -52,8 +52,8 @@ let AuthController = class AuthController {
     verifyEmail(dto) {
         return this.authService.verifyEmail(dto);
     }
-    verifyEmailGet(query) {
-        return this.authService.verifyEmail(query);
+    async verifyEmailGet(query) {
+        await this.authService.verifyEmail(query);
     }
     forgotPassword(dto) {
         return this.authService.forgotPassword(dto);
@@ -117,11 +117,11 @@ __decorate([
 __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Get)('verify-email'),
-    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, common_1.Redirect)('https://deptoflex-front-jg6i.vercel.app/login', 302),
     __param(0, (0, common_2.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [verify_email_dto_1.VerifyEmailDto]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], AuthController.prototype, "verifyEmailGet", null);
 __decorate([
     (0, public_decorator_1.Public)(),

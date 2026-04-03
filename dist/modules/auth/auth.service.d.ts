@@ -50,7 +50,16 @@ export declare class AuthService {
         message: string;
     }>;
     getMe(userId: string): Promise<{
+        id: string;
         email: string;
+        emailVerified: boolean;
+        isActive: boolean;
+        createdAt: Date;
+        userRoles: {
+            role: {
+                name: string;
+            };
+        }[];
         professionalProfile: {
             id: string;
             firstName: string;
@@ -59,15 +68,6 @@ export declare class AuthService {
             isVerified: boolean;
             status: import(".prisma/client").$Enums.ProfessionalStatus;
         } | null;
-        id: string;
-        createdAt: Date;
-        emailVerified: boolean;
-        isActive: boolean;
-        userRoles: {
-            role: {
-                name: string;
-            };
-        }[];
     } | null>;
     private createVerificationToken;
 }
