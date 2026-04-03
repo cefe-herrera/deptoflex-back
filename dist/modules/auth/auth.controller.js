@@ -19,6 +19,7 @@ const auth_service_1 = require("./auth.service");
 const register_dto_1 = require("./dto/register.dto");
 const verify_email_dto_1 = require("./dto/verify-email.dto");
 const login_dto_1 = require("./dto/login.dto");
+const google_login_dto_1 = require("./dto/google-login.dto");
 const refresh_token_dto_1 = require("./dto/refresh-token.dto");
 const logout_dto_1 = require("./dto/logout.dto");
 const forgot_password_dto_1 = require("./dto/forgot-password.dto");
@@ -36,6 +37,12 @@ let AuthController = class AuthController {
     }
     login(dto, req) {
         return this.authService.login(dto, {
+            userAgent: req.headers['user-agent'],
+            ipAddress: req.ip,
+        });
+    }
+    googleLogin(dto, req) {
+        return this.authService.googleLogin(dto, {
             userAgent: req.headers['user-agent'],
             ipAddress: req.ip,
         });
@@ -87,6 +94,17 @@ __decorate([
     __metadata("design:paramtypes", [login_dto_1.LoginDto, Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, throttler_1.Throttle)({ auth: { limit: 5, ttl: 60000 } }),
+    (0, common_1.Post)('google'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [google_login_dto_1.GoogleLoginDto, Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "googleLogin", null);
 __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('refresh'),

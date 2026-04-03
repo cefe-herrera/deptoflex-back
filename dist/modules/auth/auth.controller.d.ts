@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -14,9 +15,19 @@ export declare class AuthController {
     register(dto: RegisterDto): Promise<{
         id: string;
         email: string;
-        message: string;
     }>;
     login(dto: LoginDto, req: Request): Promise<{
+        accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        expiresAt: Date;
+        user: {
+            id: string;
+            email: string;
+            roles: string[];
+        };
+    }>;
+    googleLogin(dto: GoogleLoginDto, req: Request): Promise<{
         accessToken: string;
         refreshToken: string;
         expiresIn: number;

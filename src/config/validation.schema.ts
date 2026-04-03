@@ -16,4 +16,5 @@ export const validationSchema = Joi.object({
   APP_URL: Joi.string().uri().default('http://localhost:3000'),
   RESEND_API_KEY: Joi.string().required(),
   EMAIL_FROM: Joi.string().email().default('onboarding@resend.dev'),
+  GOOGLE_CLIENT_ID: Joi.string().required(),
 });

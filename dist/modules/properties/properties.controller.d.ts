@@ -61,13 +61,13 @@ export declare class PropertiesController {
             } | null;
             propertyImages: ({
                 mediaFile: {
+                    url: string;
                     bucket: string;
                     id: string;
                     createdAt: Date;
                     updatedAt: Date;
                     deletedAt: Date | null;
                     status: import(".prisma/client").$Enums.MediaStatus;
-                    url: string;
                     objectKey: string;
                     originalName: string;
                     mimeType: string;
@@ -121,13 +121,13 @@ export declare class PropertiesController {
         } | null;
         propertyImages: ({
             mediaFile: {
+                url: string;
                 bucket: string;
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
                 deletedAt: Date | null;
                 status: import(".prisma/client").$Enums.MediaStatus;
-                url: string;
                 objectKey: string;
                 originalName: string;
                 mimeType: string;

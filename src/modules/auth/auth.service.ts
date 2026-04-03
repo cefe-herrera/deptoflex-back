@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenService } from './token.service';
+import { ConfigService } from '@nestjs/config';
+import { OAuth2Client } from 'google-auth-library';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -20,11 +22,16 @@ import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     private prisma: PrismaService,
     private tokenService: TokenService,
     private emailService: EmailService,
-  ) { }
+    private configService: ConfigService,
+  ) {
+    this.googleClient = new OAuth2Client(this.configService.get<string>('app.googleClientId'));
+  }
 
   async register(dto: RegisterDto) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
@@ -43,6 +50,8 @@ export class AuthService {
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
         userRoles: {
           create: { roleId: 2 },
         },
@@ -56,12 +65,7 @@ export class AuthService {
       },
     });
 
-    const token = await this.createVerificationToken(user.id, TokenType.EMAIL_VERIFICATION);
-
-    // Send email with token via Resend
-    await this.emailService.sendVerificationEmail(user.email, token);
-
-    return { id: user.id, email: user.email, message: 'Verification email sent' };
+    return { id: user.id, email: user.email };
   }
 
   async login(dto: LoginDto, meta: { userAgent?: string; ipAddress?: string }) {
@@ -76,6 +80,70 @@ export class AuthService {
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
     if (!user.emailVerified) throw new ForbiddenException('Email not verified');
+    if (!user.isActive) throw new ForbiddenException('Account is inactive');
+
+    const roles = user.userRoles.map((ur) => ur.role.name);
+    const accessToken = this.tokenService.generateAccessToken({
+      sub: user.id,
+      email: user.email,
+      roles,
+    });
+    const { refreshToken, expiresAt } = await this.tokenService.createSession(user.id, meta);
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: 900,
+      expiresAt,
+      user: { id: user.id, email: user.email, roles },
+    };
+  }
+
+  async googleLogin(dto: { token: string }, meta: { userAgent?: string; ipAddress?: string }) {
+    let ticket;
+    try {
+      ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.token,
+        audience: this.configService.get<string>('app.googleClientId'),
+      });
+    } catch (error) {
+      console.error('Google Auth Validation Error:', error);
+      throw new UnauthorizedException('Invalid Google token');
+    }
+
+    const payload = ticket.getPayload();
+    if (!payload?.email) throw new UnauthorizedException('Invalid Google payload');
+
+    let user = await this.prisma.user.findFirst({
+      where: { email: payload.email, deletedAt: null },
+      include: { userRoles: { include: { role: true } } },
+    });
+
+    if (!user) {
+      // Create user if not exists
+      user = await this.prisma.user.create({
+        data: {
+          email: payload.email,
+          firstName: payload.given_name ?? '',
+          lastName: payload.family_name ?? '',
+          emailVerified: true,
+          emailVerifiedAt: new Date(),
+          passwordHash: await argon2.hash(randomBytes(32).toString('hex')), // random dummy password
+          userRoles: {
+            create: { roleId: 2 }, // assuming role ID 2 is User
+          },
+          professionalProfile: {
+            create: {
+              firstName: payload.given_name ?? '',
+              lastName: payload.family_name ?? '',
+              phone: null,
+            },
+          },
+        },
+        include: { userRoles: { include: { role: true } } },
+      });
+    }
+
     if (!user.isActive) throw new ForbiddenException('Account is inactive');
 
     const roles = user.userRoles.map((ur) => ur.role.name);

@@ -1,5 +1,6 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenService } from './token.service';
+import { ConfigService } from '@nestjs/config';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -10,13 +11,30 @@ export declare class AuthService {
     private prisma;
     private tokenService;
     private emailService;
-    constructor(prisma: PrismaService, tokenService: TokenService, emailService: EmailService);
+    private configService;
+    private googleClient;
+    constructor(prisma: PrismaService, tokenService: TokenService, emailService: EmailService, configService: ConfigService);
     register(dto: RegisterDto): Promise<{
         id: string;
         email: string;
-        message: string;
     }>;
     login(dto: LoginDto, meta: {
+        userAgent?: string;
+        ipAddress?: string;
+    }): Promise<{
+        accessToken: string;
+        refreshToken: string;
+        expiresIn: number;
+        expiresAt: Date;
+        user: {
+            id: string;
+            email: string;
+            roles: string[];
+        };
+    }>;
+    googleLogin(dto: {
+        token: string;
+    }, meta: {
         userAgent?: string;
         ipAddress?: string;
     }): Promise<{
