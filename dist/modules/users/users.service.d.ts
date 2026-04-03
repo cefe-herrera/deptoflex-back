@@ -63,9 +63,9 @@ export declare class UsersService {
     softDelete(id: string): Promise<void>;
     assignRole(userId: string, roleId: number, assignedBy: string): Promise<{
         userId: string;
-        roleId: number;
         assignedAt: Date;
         assignedBy: string | null;
+        roleId: number;
     }>;
     removeRole(userId: string, roleId: number): Promise<void>;
 }

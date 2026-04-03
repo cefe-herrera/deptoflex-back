@@ -99,9 +99,9 @@ export declare class UsersController {
     remove(id: string): Promise<void>;
     assignRole(id: string, roleId: number, user: CurrentUserPayload): Promise<{
         userId: string;
-        roleId: number;
         assignedAt: Date;
         assignedBy: string | null;
+        roleId: number;
     }>;
     removeRole(id: string, roleId: number): Promise<void>;
 }
