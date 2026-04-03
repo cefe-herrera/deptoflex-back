@@ -1,0 +1,641 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum ProfessionalStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REJECTED
+}
+
+enum CompanyRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum PropertyType {
+  APARTMENT
+  HOUSE
+  STUDIO
+  OFFICE
+  OTHER
+}
+
+enum PropertyStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  HIDDEN
+}
+
+enum UnitStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  HIDDEN
+  MAINTENANCE
+}
+
+enum AmenityCategory {
+  GENERAL
+  KITCHEN
+  BATHROOM
+  BEDROOM
+  ENTERTAINMENT
+  SAFETY
+  ACCESSIBILITY
+  OUTDOOR
+  OTHER
+}
+
+enum RateType {
+  NIGHTLY
+  WEEKLY
+  MONTHLY
+}
+
+enum MediaStatus {
+  PENDING
+  CONFIRMED
+  DELETED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATING
+  WON
+  LOST
+  CONVERTED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AvailabilityReason {
+  BOOKED
+  BLOCKED
+  MAINTENANCE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH & USERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique @db.VarChar(255)
+  passwordHash    String    @map("password_hash") @db.VarChar(255)
+  firstName       String?   @map("first_name") @db.VarChar(100)
+  lastName        String?   @map("last_name") @db.VarChar(100)
+  emailVerified   Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  userRoles            UserRole[]
+  sessions             Session[]
+  verificationTokens   VerificationToken[]
+  professionalProfile  ProfessionalProfile?
+  mediaFiles           MediaFile[]
+  activityLogs         ActivityLog[]
+  bookingStatusChanges BookingStatusHistory[]
+
+  @@index([email])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     Int      @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz
+  assignedBy String?  @map("assigned_by") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  refreshToken String    @unique @map("refresh_token") @db.VarChar(512)
+  userAgent    String?   @map("user_agent") @db.Text
+  ipAddress    String?   @map("ip_address") @db.VarChar(45)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @db.VarChar(256)
+  type      TokenType
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId, type])
+  @@map("verification_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROFESSIONAL PROFILES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProfessionalProfile {
+  id                    String             @id @default(uuid()) @db.Uuid
+  userId                String             @unique @map("user_id") @db.Uuid
+  firstName             String             @map("first_name") @db.VarChar(100)
+  lastName              String             @map("last_name") @db.VarChar(100)
+  phone                 String?            @db.VarChar(30)
+  bio                   String?            @db.Text
+  licenseNumber         String?            @map("license_number") @db.VarChar(100)
+  defaultCommissionRate Decimal            @default(0) @map("default_commission_rate") @db.Decimal(5, 2)
+  isVerified            Boolean            @default(false) @map("is_verified")
+  verifiedAt            DateTime?          @map("verified_at") @db.Timestamptz
+  status                ProfessionalStatus @default(PENDING)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyMemberships UserCompanyMembership[]
+  leads              Lead[]
+  bookings           Booking[]
+  commissions        Commission[]
+
+  @@index([status])
+  @@map("professional_profiles")
+}
+
+model CompanyProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(200)
+  taxId     String?  @unique @map("tax_id") @db.VarChar(50)
+  address   String?  @db.Text
+  phone     String?  @db.VarChar(30)
+  email     String?  @db.VarChar(255)
+  website   String?  @db.VarChar(255)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  memberships UserCompanyMembership[]
+  properties  Property[]
+
+  @@map("company_profiles")
+}
+
+model UserCompanyMembership {
+  id                    String      @id @default(uuid()) @db.Uuid
+  professionalProfileId String      @map("professional_profile_id") @db.Uuid
+  companyProfileId      String      @map("company_profile_id") @db.Uuid
+  role                  CompanyRole @default(MEMBER)
+  joinedAt              DateTime    @default(now()) @map("joined_at") @db.Timestamptz
+
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  companyProfile      CompanyProfile      @relation(fields: [companyProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalProfileId, companyProfileId])
+  @@map("user_company_memberships")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROPERTIES & UNITS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Property {
+  id          String         @id @default(uuid()) @db.Uuid
+  companyId   String?        @map("company_id") @db.Uuid
+  name        String         @db.VarChar(200)
+  description String?        @db.Text
+  type        PropertyType
+  status      PropertyStatus @default(DRAFT)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz
+
+  company           CompanyProfile?   @relation(fields: [companyId], references: [id])
+  address           PropertyAddress?
+  units             Unit[]
+  propertyImages    PropertyImage[]
+  propertyAmenities PropertyAmenity[]
+
+  @@index([status])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@map("properties")
+}
+
+model PropertyAddress {
+  id           String   @id @default(uuid()) @db.Uuid
+  propertyId   String   @unique @map("property_id") @db.Uuid
+  street       String   @db.VarChar(255)
+  number       String?  @db.VarChar(20)
+  apartment    String?  @db.VarChar(50)
+  neighborhood String?  @db.VarChar(100)
+  city         String   @db.VarChar(100)
+  state        String?  @db.VarChar(100)
+  country      String   @db.VarChar(100)
+  postalCode   String?  @map("postal_code") @db.VarChar(20)
+  latitude     Decimal? @db.Decimal(10, 8)
+  longitude    Decimal? @db.Decimal(11, 8)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_addresses")
+}
+
+model Unit {
+  id           String     @id @default(uuid()) @db.Uuid
+  propertyId   String     @map("property_id") @db.Uuid
+  name         String     @db.VarChar(100)
+  description  String?    @db.Text
+  floor        Int?       @db.SmallInt
+  bedrooms     Int        @default(0) @db.SmallInt
+  bathrooms    Int        @default(0) @db.SmallInt
+  maxOccupancy Int        @default(1) @map("max_occupancy") @db.SmallInt
+  sizeM2       Decimal?   @map("size_m2") @db.Decimal(8, 2)
+  status       UnitStatus @default(DRAFT)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz
+
+  property      Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitImages    UnitImage[]
+  unitAmenities UnitAmenity[]
+  availability  UnitAvailability[]
+  pricingRules  PricingRule[]
+  bookings      Booking[]
+  leads         Lead[]
+
+  @@index([propertyId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("units")
+}
+
+model Amenity {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String          @unique @db.VarChar(100)
+  category  AmenityCategory
+  icon      String?         @db.VarChar(50)
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  propertyAmenities PropertyAmenity[]
+  unitAmenities     UnitAmenity[]
+
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId String @map("property_id") @db.Uuid
+  amenityId  String @map("amenity_id") @db.Uuid
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+model UnitAmenity {
+  unitId    String @map("unit_id") @db.Uuid
+  amenityId String @map("amenity_id") @db.Uuid
+
+  unit    Unit    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([unitId, amenityId])
+  @@map("unit_amenities")
+}
+
+model UnitAvailability {
+  id          String              @id @default(uuid()) @db.Uuid
+  unitId      String              @map("unit_id") @db.Uuid
+  startDate   DateTime            @map("start_date") @db.Date
+  endDate     DateTime            @map("end_date") @db.Date
+  isAvailable Boolean             @default(true) @map("is_available")
+  reason      AvailabilityReason?
+  bookingId   String?             @map("booking_id") @db.Uuid
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  unit    Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([unitId, startDate, endDate])
+  @@map("unit_availability")
+}
+
+model PricingRule {
+  id        String    @id @default(uuid()) @db.Uuid
+  unitId    String    @map("unit_id") @db.Uuid
+  name      String?   @db.VarChar(100)
+  startDate DateTime? @map("start_date") @db.Date
+  endDate   DateTime? @map("end_date") @db.Date
+  baseRate  Decimal   @map("base_rate") @db.Decimal(10, 2)
+  currency  String    @default("ARS") @db.VarChar(3)
+  rateType  RateType  @default(NIGHTLY) @map("rate_type")
+  minNights Int       @default(1) @map("min_nights") @db.SmallInt
+  maxNights Int?      @map("max_nights") @db.SmallInt
+  isDefault Boolean   @default(false) @map("is_default")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId])
+  @@map("pricing_rules")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDIA FILES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MediaFile {
+  id           String      @id @default(uuid()) @db.Uuid
+  uploadedById String      @map("uploaded_by_id") @db.Uuid
+  bucket       String      @db.VarChar(100)
+  objectKey    String      @unique @map("object_key") @db.VarChar(512)
+  originalName String      @map("original_name") @db.VarChar(255)
+  mimeType     String      @map("mime_type") @db.VarChar(100)
+  sizeBytes    Int         @map("size_bytes")
+  url          String      @db.Text
+  status       MediaStatus @default(PENDING)
+  confirmedAt  DateTime?   @map("confirmed_at") @db.Timestamptz
+  deletedAt    DateTime?   @map("deleted_at") @db.Timestamptz
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  uploadedBy     User            @relation(fields: [uploadedById], references: [id])
+  propertyImages PropertyImage[]
+  unitImages     UnitImage[]
+
+  @@index([objectKey])
+  @@index([status])
+  @@map("media_files")
+}
+
+model PropertyImage {
+  id          String   @id @default(uuid()) @db.Uuid
+  propertyId  String   @map("property_id") @db.Uuid
+  mediaFileId String   @map("media_file_id") @db.Uuid
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  caption     String?  @db.VarChar(255)
+  sortOrder   Int      @default(0) @map("sort_order") @db.SmallInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  property  Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  mediaFile MediaFile @relation(fields: [mediaFileId], references: [id])
+
+  @@index([propertyId])
+  @@map("property_images")
+}
+
+model UnitImage {
+  id          String   @id @default(uuid()) @db.Uuid
+  unitId      String   @map("unit_id") @db.Uuid
+  mediaFileId String   @map("media_file_id") @db.Uuid
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  caption     String?  @db.VarChar(255)
+  sortOrder   Int      @default(0) @map("sort_order") @db.SmallInt
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  unit      Unit      @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  mediaFile MediaFile @relation(fields: [mediaFileId], references: [id])
+
+  @@index([unitId])
+  @@map("unit_images")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEADS & BOOKINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id                    String     @id @default(uuid()) @db.Uuid
+  professionalProfileId String?    @map("professional_profile_id") @db.Uuid
+  unitId                String?    @map("unit_id") @db.Uuid
+  clientName            String     @map("client_name") @db.VarChar(200)
+  clientEmail           String?    @map("client_email") @db.VarChar(255)
+  clientPhone           String?    @map("client_phone") @db.VarChar(30)
+  checkInDate           DateTime?  @map("check_in_date") @db.Date
+  checkOutDate          DateTime?  @map("check_out_date") @db.Date
+  adults                Int        @default(1) @db.SmallInt
+  children              Int        @default(0) @db.SmallInt
+  notes                 String?    @db.Text
+  status                LeadStatus @default(NEW)
+  source                String?    @db.VarChar(100)
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt             DateTime?  @map("deleted_at") @db.Timestamptz
+
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  unit                Unit?                @relation(fields: [unitId], references: [id])
+  leadRequests        LeadRequest[]
+  booking             Booking?
+
+  @@index([professionalProfileId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("leads")
+}
+
+model LeadRequest {
+  id          String   @id @default(uuid()) @db.Uuid
+  leadId      String   @map("lead_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
+  message     String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_requests")
+}
+
+model Booking {
+  id                    String        @id @default(uuid()) @db.Uuid
+  leadId                String?       @unique @map("lead_id") @db.Uuid
+  unitId                String        @map("unit_id") @db.Uuid
+  professionalProfileId String?       @map("professional_profile_id") @db.Uuid
+  clientName            String        @map("client_name") @db.VarChar(200)
+  clientEmail           String?       @map("client_email") @db.VarChar(255)
+  clientPhone           String?       @map("client_phone") @db.VarChar(30)
+  checkInDate           DateTime      @map("check_in_date") @db.Date
+  checkOutDate          DateTime      @map("check_out_date") @db.Date
+  adults                Int           @default(1) @db.SmallInt
+  children              Int           @default(0) @db.SmallInt
+  totalNights           Int           @map("total_nights") @db.SmallInt
+  baseAmount            Decimal       @map("base_amount") @db.Decimal(10, 2)
+  totalAmount           Decimal       @map("total_amount") @db.Decimal(10, 2)
+  currency              String        @default("ARS") @db.VarChar(3)
+  status                BookingStatus @default(PENDING)
+  notes                 String?       @db.Text
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz
+
+  fromLead            Lead?                  @relation(fields: [leadId], references: [id])
+  unit                Unit                   @relation(fields: [unitId], references: [id])
+  professionalProfile ProfessionalProfile?   @relation(fields: [professionalProfileId], references: [id])
+  statusHistory       BookingStatusHistory[]
+  commission          Commission?
+  availability        UnitAvailability[]
+
+  @@index([unitId, checkInDate, checkOutDate])
+  @@index([status])
+  @@index([professionalProfileId])
+  @@map("bookings")
+}
+
+model BookingStatusHistory {
+  id          String         @id @default(uuid()) @db.Uuid
+  bookingId   String         @map("booking_id") @db.Uuid
+  fromStatus  BookingStatus? @map("from_status")
+  toStatus    BookingStatus  @map("to_status")
+  reason      String?        @db.Text
+  changedById String?        @map("changed_by_id") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  changedBy User?   @relation(fields: [changedById], references: [id])
+
+  @@index([bookingId])
+  @@map("booking_status_history")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMMISSIONS & PAYOUTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Commission {
+  id                    String           @id @default(uuid()) @db.Uuid
+  bookingId             String           @unique @map("booking_id") @db.Uuid
+  professionalProfileId String?          @map("professional_profile_id") @db.Uuid
+  rate                  Decimal          @db.Decimal(5, 2)
+  baseAmount            Decimal          @map("base_amount") @db.Decimal(10, 2)
+  commissionAmount      Decimal          @map("commission_amount") @db.Decimal(10, 2)
+  currency              String           @default("ARS") @db.VarChar(3)
+  status                CommissionStatus @default(PENDING)
+  paidAt                DateTime?        @map("paid_at") @db.Timestamptz
+  notes                 String?          @db.Text
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  booking             Booking              @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  payouts             Payout[]
+
+  @@index([professionalProfileId])
+  @@index([status])
+  @@map("commissions")
+}
+
+model Payout {
+  id           String       @id @default(uuid()) @db.Uuid
+  commissionId String       @map("commission_id") @db.Uuid
+  amount       Decimal      @db.Decimal(10, 2)
+  currency     String       @default("ARS") @db.VarChar(3)
+  method       String?      @db.VarChar(100)
+  reference    String?      @db.VarChar(255)
+  status       PayoutStatus @default(PENDING)
+  processedAt  DateTime?    @map("processed_at") @db.Timestamptz
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  commission Commission @relation(fields: [commissionId], references: [id], onDelete: Cascade)
+
+  @@index([commissionId])
+  @@map("payouts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  entityType String   @map("entity_type") @db.VarChar(50)
+  entityId   String   @map("entity_id") @db.Uuid
+  action     String   @db.VarChar(100)
+  metadata   Json?
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+  @@map("activity_logs")
+}

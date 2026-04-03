@@ -1,0 +1,1 @@
+{"version":3,"file":"update-booking-status.dto.js","sourceRoot":"","sources":["../../../../src/modules/bookings/dto/update-booking-status.dto.ts"],"names":[],"mappings":";;;;;;;;;;;;AAAA,qDAA+D;AAC/D,2CAA+C;AAE/C,MAAa,sBAAsB;IACV,MAAM,CAAgB;IACnB,MAAM,CAAU;CAC3C;AAHD,wDAGC;AAFwB;IAAtB,IAAA,wBAAM,EAAC,sBAAa,CAAC;;sDAAuB;AACnB;IAAzB,IAAA,4BAAU,GAAE;IAAE,IAAA,0BAAQ,GAAE;;sDAAiB"}
