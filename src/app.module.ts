@@ -22,6 +22,7 @@ import { CommissionsModule } from './modules/commissions/commissions.module';
 import { MediaModule } from './modules/media/media.module';
 import { R2Module } from './modules/r2/r2.module';
 import { HealthModule } from './modules/health/health.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -52,6 +53,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     CommissionsModule,
     MediaModule,
     HealthModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -38,10 +38,21 @@ export class ProfessionalsController {
     return this.professionalsService.adminUpdate(id, dto);
   }
 
+  @Post('me/request-ambassador')
+  requestAmbassador(@CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.requestAmbassador(user.id);
+  }
+
   @Post(':id/verify')
   @Roles('ADMIN')
   verify(@Param('id', ParseUUIDPipe) id: string) {
     return this.professionalsService.verify(id);
+  }
+
+  @Post(':id/reject')
+  @Roles('ADMIN')
+  reject(@Param('id', ParseUUIDPipe) id: string) {
+    return this.professionalsService.reject(id);
   }
 
   @Post(':id/suspend')

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 
@@ -49,11 +49,48 @@ export class ProfessionalsService {
     return this.prisma.professionalProfile.update({ where: { id }, data: dto });
   }
 
+  async requestAmbassador(userId: string) {
+    const profile = await this.prisma.professionalProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    if (profile.status === 'ACTIVE') {
+      throw new ConflictException('Already an active ambassador');
+    }
+    if (profile.ambassadorRequestedAt) {
+      throw new ConflictException('Ambassador request already submitted');
+    }
+
+    return this.prisma.professionalProfile.update({
+      where: { userId },
+      data: { ambassadorRequestedAt: new Date(), status: 'PENDING' },
+    });
+  }
+
   async verify(id: string) {
+    const profile = await this.findOne(id);
+
+    const ambassadorRole = await this.prisma.role.findUniqueOrThrow({ where: { name: 'AMBASSADOR' } });
+
+    await this.prisma.$transaction([
+      this.prisma.professionalProfile.update({
+        where: { id },
+        data: { isVerified: true, verifiedAt: new Date(), status: 'ACTIVE' },
+      }),
+      this.prisma.userRole.upsert({
+        where: { userId_roleId: { userId: profile.userId, roleId: ambassadorRole.id } },
+        create: { userId: profile.userId, roleId: ambassadorRole.id },
+        update: {},
+      }),
+    ]);
+
+    return { message: 'Ambassador approved' };
+  }
+
+  async reject(id: string) {
     await this.findOne(id);
     return this.prisma.professionalProfile.update({
       where: { id },
-      data: { isVerified: true, verifiedAt: new Date(), status: 'ACTIVE' },
+      data: { status: 'REJECTED', ambassadorRequestedAt: null },
     });
   }
 

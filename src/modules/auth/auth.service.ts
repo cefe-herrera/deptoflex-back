@@ -50,16 +50,18 @@ export class AuthService {
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
+        phone: dto.phone ?? null,
         emailVerified: true,
         emailVerifiedAt: new Date(),
+        termsAcceptedAt: new Date(),
         userRoles: {
-          create: { roleId: 2 },
+          create: { role: { connect: { name: 'USER' } } },
         },
         professionalProfile: {
           create: {
             firstName: dto.firstName,
             lastName: dto.lastName,
-            phone: dto.phone,
+            phone: dto.phone ?? null,
           },
         },
       },
@@ -130,7 +132,7 @@ export class AuthService {
           emailVerifiedAt: new Date(),
           passwordHash: await argon2.hash(randomBytes(32).toString('hex')), // random dummy password
           userRoles: {
-            create: { roleId: 2 }, // assuming role ID 2 is User
+            create: { role: { connect: { name: 'USER' } } },
           },
           professionalProfile: {
             create: {
@@ -245,13 +247,17 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    return this.prisma.user.findFirst({
+    const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       select: {
         id: true,
         email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
         emailVerified: true,
         isActive: true,
+        termsAcceptedAt: true,
         createdAt: true,
         userRoles: { select: { role: { select: { name: true } } } },
         professionalProfile: {
@@ -262,10 +268,20 @@ export class AuthService {
             phone: true,
             status: true,
             isVerified: true,
+            ambassadorRequestedAt: true,
           },
         },
       },
     });
+
+    if (!user) return null;
+
+    const { userRoles, professionalProfile, ...rest } = user;
+    return {
+      ...rest,
+      roles: userRoles.map((ur) => ur.role.name),
+      professionalProfile,
+    };
   }
 
   private async createVerificationToken(
