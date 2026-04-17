@@ -1,4 +1,4 @@
-import { PropertyType } from '@prisma/client';
+import { PropertyType, PropertyStatus } from '@prisma/client';
 export declare class CreatePropertyAddressDto {
     street: string;
     number?: string;
@@ -16,5 +16,6 @@ export declare class CreatePropertyDto {
     name: string;
     description?: string;
     type: PropertyType;
+    status?: PropertyStatus;
     address?: CreatePropertyAddressDto;
 }

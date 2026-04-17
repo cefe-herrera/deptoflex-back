@@ -7,11 +7,11 @@ export declare class CommissionsService {
         createdAt: Date;
         updatedAt: Date;
         status: import(".prisma/client").$Enums.CommissionStatus;
+        professionalProfileId: string | null;
         currency: string;
         bookingId: string;
         notes: string | null;
         baseAmount: import("@prisma/client/runtime/library").Decimal;
-        professionalProfileId: string | null;
         rate: import("@prisma/client/runtime/library").Decimal;
         commissionAmount: import("@prisma/client/runtime/library").Decimal;
         paidAt: Date | null;

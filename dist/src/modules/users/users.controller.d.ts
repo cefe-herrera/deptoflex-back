@@ -23,6 +23,7 @@ export declare class UsersController {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -81,6 +82,7 @@ export declare class UsersController {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;

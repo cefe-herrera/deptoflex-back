@@ -17,6 +17,7 @@ export declare class ProfessionalsService {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -29,6 +30,7 @@ export declare class ProfessionalsService {
         page: number;
         limit: number;
     }>;
+    getProfileIdByUserId(userId: string): Promise<string>;
     findByUserId(userId: string): Promise<{
         user: {
             email: string;
@@ -42,8 +44,8 @@ export declare class ProfessionalsService {
                 email: string | null;
                 phone: string | null;
                 isActive: boolean;
-                address: string | null;
                 taxId: string | null;
+                address: string | null;
                 website: string | null;
             };
         } & {
@@ -61,6 +63,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -82,6 +85,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -98,6 +102,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -114,6 +119,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -130,6 +136,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -149,6 +156,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -165,6 +173,7 @@ export declare class ProfessionalsService {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;

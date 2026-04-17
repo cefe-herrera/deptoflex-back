@@ -5,10 +5,16 @@ import { ProfessionalsService } from './professionals.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { MediaService } from '../media/media.service';
+import { PresignUploadDto } from '../media/dto/presign-upload.dto';
+import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
 
 @Controller('professionals')
 export class ProfessionalsController {
-  constructor(private professionalsService: ProfessionalsService) { }
+  constructor(
+    private professionalsService: ProfessionalsService,
+    private mediaService: MediaService,
+  ) { }
 
   @Get('me')
   getMe(@CurrentUser() user: CurrentUserPayload) {
@@ -41,6 +47,36 @@ export class ProfessionalsController {
   @Post('me/request-ambassador')
   requestAmbassador(@CurrentUser() user: CurrentUserPayload) {
     return this.professionalsService.requestAmbassador(user.id);
+  }
+
+  @Post('me/avatar/presign')
+  presignMyAvatar(@CurrentUser() user: CurrentUserPayload, @Body() dto: PresignUploadDto) {
+    return this.professionalsService.getProfileIdByUserId(user.id).then((profileId) =>
+      this.mediaService.presignForProfessional(profileId, dto, user.id),
+    );
+  }
+
+  @Post('me/avatar/confirm')
+  confirmMyAvatar(@CurrentUser() user: CurrentUserPayload, @Body() dto: ConfirmUploadDto) {
+    return this.professionalsService.getProfileIdByUserId(user.id).then((profileId) =>
+      this.mediaService.confirmAvatarForProfessional(profileId, dto),
+    );
+  }
+
+  @Post(':id/avatar/presign')
+  @Roles('ADMIN', 'OPERATOR')
+  presignAvatar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: PresignUploadDto,
+  ) {
+    return this.mediaService.presignForProfessional(id, dto, user.id);
+  }
+
+  @Post(':id/avatar/confirm')
+  @Roles('ADMIN', 'OPERATOR')
+  confirmAvatar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfirmUploadDto) {
+    return this.mediaService.confirmAvatarForProfessional(id, dto);
   }
 
   @Post(':id/verify')

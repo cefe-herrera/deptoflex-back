@@ -1,9 +1,13 @@
 import { ProfessionalsService } from './professionals.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { MediaService } from '../media/media.service';
+import { PresignUploadDto } from '../media/dto/presign-upload.dto';
+import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
 export declare class ProfessionalsController {
     private professionalsService;
-    constructor(professionalsService: ProfessionalsService);
+    private mediaService;
+    constructor(professionalsService: ProfessionalsService, mediaService: MediaService);
     getMe(user: CurrentUserPayload): Promise<{
         user: {
             email: string;
@@ -17,8 +21,8 @@ export declare class ProfessionalsController {
                 email: string | null;
                 phone: string | null;
                 isActive: boolean;
-                address: string | null;
                 taxId: string | null;
+                address: string | null;
                 website: string | null;
             };
         } & {
@@ -36,6 +40,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -52,6 +57,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -74,6 +80,7 @@ export declare class ProfessionalsController {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -99,6 +106,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -115,6 +123,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -131,6 +140,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -138,6 +148,24 @@ export declare class ProfessionalsController {
         verifiedAt: Date | null;
         status: import(".prisma/client").$Enums.ProfessionalStatus;
         ambassadorRequestedAt: Date | null;
+    }>;
+    presignMyAvatar(user: CurrentUserPayload, dto: PresignUploadDto): Promise<{
+        uploadUrl: string;
+        objectKey: string;
+        mediaFileId: string;
+        expiresIn: number;
+    }>;
+    confirmMyAvatar(user: CurrentUserPayload, dto: ConfirmUploadDto): Promise<{
+        avatarUrl: string;
+    }>;
+    presignAvatar(id: string, user: CurrentUserPayload, dto: PresignUploadDto): Promise<{
+        uploadUrl: string;
+        objectKey: string;
+        mediaFileId: string;
+        expiresIn: number;
+    }>;
+    confirmAvatar(id: string, dto: ConfirmUploadDto): Promise<{
+        avatarUrl: string;
     }>;
     verify(id: string): Promise<{
         message: string;
@@ -150,6 +178,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -166,6 +195,7 @@ export declare class ProfessionalsController {
         firstName: string;
         lastName: string;
         phone: string | null;
+        avatarUrl: string | null;
         bio: string | null;
         licenseNumber: string | null;
         defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;

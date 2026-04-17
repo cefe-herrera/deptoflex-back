@@ -90,6 +90,7 @@ class CreatePropertyDto {
     name;
     description;
     type;
+    status;
     address;
 }
 exports.CreatePropertyDto = CreatePropertyDto;
@@ -113,6 +114,11 @@ __decorate([
     (0, class_validator_1.IsEnum)(client_1.PropertyType),
     __metadata("design:type", String)
 ], CreatePropertyDto.prototype, "type", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.PropertyStatus),
+    __metadata("design:type", String)
+], CreatePropertyDto.prototype, "status", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.ValidateNested)(),

@@ -54,7 +54,7 @@ export class R2Service {
     return `${this.publicBaseUrl}/${objectKey}`;
   }
 
-  buildObjectKey(entity: 'properties' | 'units', entityId: string, filename: string): string {
+  buildObjectKey(entity: 'properties' | 'units' | 'professionals', entityId: string, filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
     return `${entity}/${entityId}/${randomUUID()}.${ext}`;
   }

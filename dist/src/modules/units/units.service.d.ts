@@ -47,9 +47,9 @@ export declare class UnitsService {
             } & {
                 id: string;
                 createdAt: Date;
-                isPrimary: boolean;
                 mediaFileId: string;
                 caption: string | null;
+                isPrimary: boolean;
                 sortOrder: number;
                 unitId: string;
             })[];
@@ -79,6 +79,7 @@ export declare class UnitsService {
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
+                propertyId: string;
                 street: string;
                 apartment: string | null;
                 neighborhood: string | null;
@@ -88,7 +89,6 @@ export declare class UnitsService {
                 postalCode: string | null;
                 latitude: import("@prisma/client/runtime/library").Decimal | null;
                 longitude: import("@prisma/client/runtime/library").Decimal | null;
-                propertyId: string;
             } | null;
         } & {
             id: string;
@@ -120,9 +120,9 @@ export declare class UnitsService {
         } & {
             id: string;
             createdAt: Date;
-            isPrimary: boolean;
             mediaFileId: string;
             caption: string | null;
+            isPrimary: boolean;
             sortOrder: number;
             unitId: string;
         })[];
@@ -136,8 +136,8 @@ export declare class UnitsService {
                 icon: string | null;
             };
         } & {
-            amenityId: string;
             unitId: string;
+            amenityId: string;
         })[];
         pricingRules: {
             id: string;
@@ -224,8 +224,8 @@ export declare class UnitsService {
     }[]>;
     setRates(unitId: string, dto: SetPricingRulesDto): Promise<import(".prisma/client").Prisma.BatchPayload>;
     addAmenity(unitId: string, amenityId: string): Promise<{
-        amenityId: string;
         unitId: string;
+        amenityId: string;
     }>;
     removeAmenity(unitId: string, amenityId: string): Promise<void>;
 }

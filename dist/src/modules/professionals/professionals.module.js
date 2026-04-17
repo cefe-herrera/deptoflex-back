@@ -10,11 +10,13 @@ exports.ProfessionalsModule = void 0;
 const common_1 = require("@nestjs/common");
 const professionals_controller_1 = require("./professionals.controller");
 const professionals_service_1 = require("./professionals.service");
+const media_module_1 = require("../media/media.module");
 let ProfessionalsModule = class ProfessionalsModule {
 };
 exports.ProfessionalsModule = ProfessionalsModule;
 exports.ProfessionalsModule = ProfessionalsModule = __decorate([
     (0, common_1.Module)({
+        imports: [media_module_1.MediaModule],
         controllers: [professionals_controller_1.ProfessionalsController],
         providers: [professionals_service_1.ProfessionalsService],
         exports: [professionals_service_1.ProfessionalsService],

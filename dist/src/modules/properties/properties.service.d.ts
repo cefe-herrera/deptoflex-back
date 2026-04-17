@@ -11,6 +11,7 @@ export declare class PropertiesService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            propertyId: string;
             street: string;
             apartment: string | null;
             neighborhood: string | null;
@@ -20,7 +21,6 @@ export declare class PropertiesService {
             postalCode: string | null;
             latitude: import("@prisma/client/runtime/library").Decimal | null;
             longitude: import("@prisma/client/runtime/library").Decimal | null;
-            propertyId: string;
         } | null;
     } & {
         id: string;
@@ -43,6 +43,7 @@ export declare class PropertiesService {
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
+                propertyId: string;
                 street: string;
                 apartment: string | null;
                 neighborhood: string | null;
@@ -52,7 +53,6 @@ export declare class PropertiesService {
                 postalCode: string | null;
                 latitude: import("@prisma/client/runtime/library").Decimal | null;
                 longitude: import("@prisma/client/runtime/library").Decimal | null;
-                propertyId: string;
             } | null;
             propertyImages: ({
                 mediaFile: {
@@ -73,11 +73,11 @@ export declare class PropertiesService {
             } & {
                 id: string;
                 createdAt: Date;
-                isPrimary: boolean;
-                propertyId: string;
                 mediaFileId: string;
                 caption: string | null;
+                isPrimary: boolean;
                 sortOrder: number;
+                propertyId: string;
             })[];
         } & {
             id: string;
@@ -103,6 +103,7 @@ export declare class PropertiesService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            propertyId: string;
             street: string;
             apartment: string | null;
             neighborhood: string | null;
@@ -112,7 +113,6 @@ export declare class PropertiesService {
             postalCode: string | null;
             latitude: import("@prisma/client/runtime/library").Decimal | null;
             longitude: import("@prisma/client/runtime/library").Decimal | null;
-            propertyId: string;
         } | null;
         propertyImages: ({
             mediaFile: {
@@ -133,11 +133,11 @@ export declare class PropertiesService {
         } & {
             id: string;
             createdAt: Date;
-            isPrimary: boolean;
-            propertyId: string;
             mediaFileId: string;
             caption: string | null;
+            isPrimary: boolean;
             sortOrder: number;
+            propertyId: string;
         })[];
         propertyAmenities: ({
             amenity: {
@@ -169,6 +169,7 @@ export declare class PropertiesService {
             id: string;
             createdAt: Date;
             updatedAt: Date;
+            propertyId: string;
             street: string;
             apartment: string | null;
             neighborhood: string | null;
@@ -178,7 +179,6 @@ export declare class PropertiesService {
             postalCode: string | null;
             latitude: import("@prisma/client/runtime/library").Decimal | null;
             longitude: import("@prisma/client/runtime/library").Decimal | null;
-            propertyId: string;
         } | null;
     } & {
         id: string;

@@ -18,10 +18,15 @@ const professionals_service_1 = require("./professionals.service");
 const update_professional_dto_1 = require("./dto/update-professional.dto");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const media_service_1 = require("../media/media.service");
+const presign_upload_dto_1 = require("../media/dto/presign-upload.dto");
+const confirm_upload_dto_1 = require("../media/dto/confirm-upload.dto");
 let ProfessionalsController = class ProfessionalsController {
     professionalsService;
-    constructor(professionalsService) {
+    mediaService;
+    constructor(professionalsService, mediaService) {
         this.professionalsService = professionalsService;
+        this.mediaService = mediaService;
     }
     getMe(user) {
         return this.professionalsService.findByUserId(user.id);
@@ -40,6 +45,18 @@ let ProfessionalsController = class ProfessionalsController {
     }
     requestAmbassador(user) {
         return this.professionalsService.requestAmbassador(user.id);
+    }
+    presignMyAvatar(user, dto) {
+        return this.professionalsService.getProfileIdByUserId(user.id).then((profileId) => this.mediaService.presignForProfessional(profileId, dto, user.id));
+    }
+    confirmMyAvatar(user, dto) {
+        return this.professionalsService.getProfileIdByUserId(user.id).then((profileId) => this.mediaService.confirmAvatarForProfessional(profileId, dto));
+    }
+    presignAvatar(id, user, dto) {
+        return this.mediaService.presignForProfessional(id, dto, user.id);
+    }
+    confirmAvatar(id, dto) {
+        return this.mediaService.confirmAvatarForProfessional(id, dto);
     }
     verify(id) {
         return this.professionalsService.verify(id);
@@ -101,6 +118,41 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], ProfessionalsController.prototype, "requestAmbassador", null);
 __decorate([
+    (0, common_1.Post)('me/avatar/presign'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, presign_upload_dto_1.PresignUploadDto]),
+    __metadata("design:returntype", void 0)
+], ProfessionalsController.prototype, "presignMyAvatar", null);
+__decorate([
+    (0, common_1.Post)('me/avatar/confirm'),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, confirm_upload_dto_1.ConfirmUploadDto]),
+    __metadata("design:returntype", void 0)
+], ProfessionalsController.prototype, "confirmMyAvatar", null);
+__decorate([
+    (0, common_1.Post)(':id/avatar/presign'),
+    (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, presign_upload_dto_1.PresignUploadDto]),
+    __metadata("design:returntype", void 0)
+], ProfessionalsController.prototype, "presignAvatar", null);
+__decorate([
+    (0, common_1.Post)(':id/avatar/confirm'),
+    (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, confirm_upload_dto_1.ConfirmUploadDto]),
+    __metadata("design:returntype", void 0)
+], ProfessionalsController.prototype, "confirmAvatar", null);
+__decorate([
     (0, common_1.Post)(':id/verify'),
     (0, roles_decorator_1.Roles)('ADMIN'),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
@@ -126,6 +178,7 @@ __decorate([
 ], ProfessionalsController.prototype, "suspend", null);
 exports.ProfessionalsController = ProfessionalsController = __decorate([
     (0, common_1.Controller)('professionals'),
-    __metadata("design:paramtypes", [professionals_service_1.ProfessionalsService])
+    __metadata("design:paramtypes", [professionals_service_1.ProfessionalsService,
+        media_service_1.MediaService])
 ], ProfessionalsController);
 //# sourceMappingURL=professionals.controller.js.map

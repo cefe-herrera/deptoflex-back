@@ -12,6 +12,7 @@ export declare class LeadsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
+        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -22,7 +23,6 @@ export declare class LeadsService {
         children: number;
         notes: string | null;
         source: string | null;
-        professionalProfileId: string | null;
     }>;
     findAll(page?: number, limit?: number, userId?: string, roles?: string[]): Promise<{
         items: ({
@@ -36,6 +36,7 @@ export declare class LeadsService {
             updatedAt: Date;
             deletedAt: Date | null;
             status: import(".prisma/client").$Enums.LeadStatus;
+            professionalProfileId: string | null;
             unitId: string | null;
             clientName: string;
             clientEmail: string | null;
@@ -46,7 +47,6 @@ export declare class LeadsService {
             children: number;
             notes: string | null;
             source: string | null;
-            professionalProfileId: string | null;
         })[];
         total: number;
         page: number;
@@ -61,6 +61,7 @@ export declare class LeadsService {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -76,6 +77,7 @@ export declare class LeadsService {
                     id: string;
                     createdAt: Date;
                     updatedAt: Date;
+                    propertyId: string;
                     street: string;
                     apartment: string | null;
                     neighborhood: string | null;
@@ -85,7 +87,6 @@ export declare class LeadsService {
                     postalCode: string | null;
                     latitude: import("@prisma/client/runtime/library").Decimal | null;
                     longitude: import("@prisma/client/runtime/library").Decimal | null;
-                    propertyId: string;
                 } | null;
             } & {
                 id: string;
@@ -130,6 +131,7 @@ export declare class LeadsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
+        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -140,7 +142,6 @@ export declare class LeadsService {
         children: number;
         notes: string | null;
         source: string | null;
-        professionalProfileId: string | null;
     }>;
     update(id: string, dto: UpdateLeadDto): Promise<{
         id: string;
@@ -148,6 +149,7 @@ export declare class LeadsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
+        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -158,7 +160,6 @@ export declare class LeadsService {
         children: number;
         notes: string | null;
         source: string | null;
-        professionalProfileId: string | null;
     }>;
     addNote(leadId: string, dto: AddNoteDto, createdById: string): Promise<{
         id: string;
@@ -173,6 +174,7 @@ export declare class LeadsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
+        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -185,7 +187,6 @@ export declare class LeadsService {
         notes: string | null;
         baseAmount: import("@prisma/client/runtime/library").Decimal;
         totalAmount: import("@prisma/client/runtime/library").Decimal;
-        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
     }>;

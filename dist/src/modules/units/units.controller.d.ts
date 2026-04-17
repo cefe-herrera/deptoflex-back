@@ -52,9 +52,9 @@ export declare class UnitsController {
             } & {
                 id: string;
                 createdAt: Date;
-                isPrimary: boolean;
                 mediaFileId: string;
                 caption: string | null;
+                isPrimary: boolean;
                 sortOrder: number;
                 unitId: string;
             })[];
@@ -84,6 +84,7 @@ export declare class UnitsController {
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
+                propertyId: string;
                 street: string;
                 apartment: string | null;
                 neighborhood: string | null;
@@ -93,7 +94,6 @@ export declare class UnitsController {
                 postalCode: string | null;
                 latitude: import("@prisma/client/runtime/library").Decimal | null;
                 longitude: import("@prisma/client/runtime/library").Decimal | null;
-                propertyId: string;
             } | null;
         } & {
             id: string;
@@ -125,9 +125,9 @@ export declare class UnitsController {
         } & {
             id: string;
             createdAt: Date;
-            isPrimary: boolean;
             mediaFileId: string;
             caption: string | null;
+            isPrimary: boolean;
             sortOrder: number;
             unitId: string;
         })[];
@@ -141,8 +141,8 @@ export declare class UnitsController {
                 icon: string | null;
             };
         } & {
-            amenityId: string;
             unitId: string;
+            amenityId: string;
         })[];
         pricingRules: {
             id: string;
@@ -229,8 +229,8 @@ export declare class UnitsController {
     }[]>;
     setRates(id: string, dto: SetPricingRulesDto): Promise<import(".prisma/client").Prisma.BatchPayload>;
     addAmenity(id: string, amenityId: string): Promise<{
-        amenityId: string;
         unitId: string;
+        amenityId: string;
     }>;
     removeAmenity(id: string, amenityId: string): Promise<void>;
     presignImage(id: string, dto: PresignUploadDto, user: CurrentUserPayload): Promise<{
@@ -242,9 +242,9 @@ export declare class UnitsController {
     confirmImage(id: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        isPrimary: boolean;
         mediaFileId: string;
         caption: string | null;
+        isPrimary: boolean;
         sortOrder: number;
         unitId: string;
     }>;

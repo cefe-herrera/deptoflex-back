@@ -20,6 +20,12 @@ export class ProfessionalsService {
     return { items, total, page, limit };
   }
 
+  async getProfileIdByUserId(userId: string): Promise<string> {
+    const profile = await this.prisma.professionalProfile.findUnique({ where: { userId }, select: { id: true } });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+    return profile.id;
+  }
+
   async findByUserId(userId: string) {
     const profile = await this.prisma.professionalProfile.findUnique({
       where: { userId },

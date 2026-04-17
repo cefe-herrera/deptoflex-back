@@ -9,5 +9,5 @@ export declare class R2Service {
     objectExists(objectKey: string): Promise<boolean>;
     deleteObject(objectKey: string): Promise<void>;
     getPublicUrl(objectKey: string): string;
-    buildObjectKey(entity: 'properties' | 'units', entityId: string, filename: string): string;
+    buildObjectKey(entity: 'properties' | 'units' | 'professionals', entityId: string, filename: string): string;
 }

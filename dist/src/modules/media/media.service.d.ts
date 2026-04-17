@@ -25,24 +25,34 @@ export declare class MediaService {
     confirmForProperty(propertyId: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        isPrimary: boolean;
-        propertyId: string;
         mediaFileId: string;
         caption: string | null;
+        isPrimary: boolean;
         sortOrder: number;
+        propertyId: string;
     }>;
     confirmForUnit(unitId: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        isPrimary: boolean;
         mediaFileId: string;
         caption: string | null;
+        isPrimary: boolean;
         sortOrder: number;
         unitId: string;
+    }>;
+    presignForProfessional(profileId: string, dto: PresignUploadDto, userId: string): Promise<{
+        uploadUrl: string;
+        objectKey: string;
+        mediaFileId: string;
+        expiresIn: number;
+    }>;
+    confirmAvatarForProfessional(profileId: string, dto: ConfirmUploadDto): Promise<{
+        avatarUrl: string;
     }>;
     deletePropertyImage(propertyId: string, imageId: string): Promise<void>;
     deleteUnitImage(unitId: string, imageId: string): Promise<void>;
     private resolveMediaFile;
     private assertPropertyExists;
     private assertUnitExists;
+    private assertProfessionalExists;
 }

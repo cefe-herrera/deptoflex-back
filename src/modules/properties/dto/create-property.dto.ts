@@ -3,7 +3,7 @@ import {
   IsNumber, Min, Max,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { PropertyType } from '@prisma/client';
+import { PropertyType, PropertyStatus } from '@prisma/client';
 
 export class CreatePropertyAddressDto {
   @IsString() @MaxLength(255) street: string;
@@ -27,6 +27,7 @@ export class CreatePropertyDto {
 
   @IsOptional() @IsString() description?: string;
   @IsEnum(PropertyType) type: PropertyType;
+  @IsOptional() @IsEnum(PropertyStatus) status?: PropertyStatus;
 
   @IsOptional()
   @ValidateNested()

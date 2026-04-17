@@ -15,6 +15,7 @@ export declare class BookingsController {
             firstName: string;
             lastName: string;
             phone: string | null;
+            avatarUrl: string | null;
             bio: string | null;
             licenseNumber: string | null;
             defaultCommissionRate: import("@prisma/client/runtime/library").Decimal;
@@ -30,6 +31,7 @@ export declare class BookingsController {
                     id: string;
                     createdAt: Date;
                     updatedAt: Date;
+                    propertyId: string;
                     street: string;
                     apartment: string | null;
                     neighborhood: string | null;
@@ -39,7 +41,6 @@ export declare class BookingsController {
                     postalCode: string | null;
                     latitude: import("@prisma/client/runtime/library").Decimal | null;
                     longitude: import("@prisma/client/runtime/library").Decimal | null;
-                    propertyId: string;
                 } | null;
             } & {
                 id: string;
@@ -72,11 +73,11 @@ export declare class BookingsController {
             createdAt: Date;
             updatedAt: Date;
             status: import(".prisma/client").$Enums.CommissionStatus;
+            professionalProfileId: string | null;
             currency: string;
             bookingId: string;
             notes: string | null;
             baseAmount: import("@prisma/client/runtime/library").Decimal;
-            professionalProfileId: string | null;
             rate: import("@prisma/client/runtime/library").Decimal;
             commissionAmount: import("@prisma/client/runtime/library").Decimal;
             paidAt: Date | null;
@@ -96,6 +97,7 @@ export declare class BookingsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
+        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -108,7 +110,6 @@ export declare class BookingsController {
         notes: string | null;
         baseAmount: import("@prisma/client/runtime/library").Decimal;
         totalAmount: import("@prisma/client/runtime/library").Decimal;
-        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
     }>;

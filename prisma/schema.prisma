@@ -215,6 +215,7 @@ model ProfessionalProfile {
   firstName             String             @map("first_name") @db.VarChar(100)
   lastName              String             @map("last_name") @db.VarChar(100)
   phone                 String?            @db.VarChar(30)
+  avatarUrl             String?            @map("avatar_url") @db.Text
   bio                   String?            @db.Text
   licenseNumber         String?            @map("license_number") @db.VarChar(100)
   defaultCommissionRate Decimal            @default(0) @map("default_commission_rate") @db.Decimal(5, 2)

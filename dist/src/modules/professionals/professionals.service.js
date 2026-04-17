@@ -30,6 +30,12 @@ let ProfessionalsService = class ProfessionalsService {
         ]);
         return { items, total, page, limit };
     }
+    async getProfileIdByUserId(userId) {
+        const profile = await this.prisma.professionalProfile.findUnique({ where: { userId }, select: { id: true } });
+        if (!profile)
+            throw new common_1.NotFoundException('Professional profile not found');
+        return profile.id;
+    }
     async findByUserId(userId) {
         const profile = await this.prisma.professionalProfile.findUnique({
             where: { userId },

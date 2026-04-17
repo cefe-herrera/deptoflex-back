@@ -78,6 +78,25 @@ let MediaService = class MediaService {
             return image;
         });
     }
+    async presignForProfessional(profileId, dto, userId) {
+        await this.assertProfessionalExists(profileId);
+        return this.createPresign('professionals', profileId, dto, userId);
+    }
+    async confirmAvatarForProfessional(profileId, dto) {
+        const mediaFile = await this.resolveMediaFile(dto.mediaFileId);
+        const url = mediaFile.url;
+        await this.prisma.$transaction([
+            this.prisma.mediaFile.update({
+                where: { id: mediaFile.id },
+                data: { status: client_1.MediaStatus.CONFIRMED, confirmedAt: new Date() },
+            }),
+            this.prisma.professionalProfile.update({
+                where: { id: profileId },
+                data: { avatarUrl: url },
+            }),
+        ]);
+        return { avatarUrl: url };
+    }
     async deletePropertyImage(propertyId, imageId) {
         const image = await this.prisma.propertyImage.findFirst({
             where: { id: imageId, propertyId },
@@ -123,6 +142,11 @@ let MediaService = class MediaService {
         const u = await this.prisma.unit.findFirst({ where: { id, deletedAt: null } });
         if (!u)
             throw new common_1.NotFoundException('Unit not found');
+    }
+    async assertProfessionalExists(id) {
+        const p = await this.prisma.professionalProfile.findUnique({ where: { id } });
+        if (!p)
+            throw new common_1.NotFoundException('Professional profile not found');
     }
 };
 exports.MediaService = MediaService;
