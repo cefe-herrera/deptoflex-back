@@ -29,6 +29,8 @@ let R2Service = class R2Service {
                 accessKeyId: config.get('r2.accessKeyId'),
                 secretAccessKey: config.get('r2.secretAccessKey'),
             },
+            requestChecksumCalculation: 'WHEN_REQUIRED',
+            responseChecksumValidation: 'WHEN_REQUIRED',
         });
         this.bucket = config.get('r2.bucket');
         this.publicBaseUrl = config.get('r2.publicBaseUrl');

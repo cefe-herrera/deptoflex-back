@@ -8,10 +8,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateUnitDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
+const client_1 = require("@prisma/client");
 class CreateUnitDto {
     propertyId;
     name;
@@ -21,6 +23,8 @@ class CreateUnitDto {
     bathrooms;
     maxOccupancy;
     sizeM2;
+    status;
+    rentalModality;
 }
 exports.CreateUnitDto = CreateUnitDto;
 __decorate([
@@ -63,7 +67,18 @@ __decorate([
 ], CreateUnitDto.prototype, "maxOccupancy", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => value != null ? String(value) : undefined),
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], CreateUnitDto.prototype, "sizeM2", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.UnitStatus),
+    __metadata("design:type", String)
+], CreateUnitDto.prototype, "status", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsEnum)(client_1.RentalModality),
+    __metadata("design:type", typeof (_a = typeof client_1.RentalModality !== "undefined" && client_1.RentalModality) === "function" ? _a : Object)
+], CreateUnitDto.prototype, "rentalModality", void 0);
 //# sourceMappingURL=create-unit.dto.js.map

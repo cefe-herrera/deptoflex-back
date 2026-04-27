@@ -23,6 +23,8 @@ export class R2Service {
         accessKeyId: config.get<string>('r2.accessKeyId')!,
         secretAccessKey: config.get<string>('r2.secretAccessKey')!,
       },
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
     });
     this.bucket = config.get<string>('r2.bucket')!;
     this.publicBaseUrl = config.get<string>('r2.publicBaseUrl')!;

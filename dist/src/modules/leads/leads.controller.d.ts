@@ -15,7 +15,6 @@ export declare class LeadsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
-        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -26,6 +25,7 @@ export declare class LeadsController {
         children: number;
         notes: string | null;
         source: string | null;
+        professionalProfileId: string | null;
     }>;
     findAll(page: number | undefined, limit: number | undefined, user: CurrentUserPayload): Promise<{
         items: ({
@@ -39,7 +39,6 @@ export declare class LeadsController {
             updatedAt: Date;
             deletedAt: Date | null;
             status: import(".prisma/client").$Enums.LeadStatus;
-            professionalProfileId: string | null;
             unitId: string | null;
             clientName: string;
             clientEmail: string | null;
@@ -50,6 +49,7 @@ export declare class LeadsController {
             children: number;
             notes: string | null;
             source: string | null;
+            professionalProfileId: string | null;
         })[];
         total: number;
         page: number;
@@ -116,6 +116,7 @@ export declare class LeadsController {
             bathrooms: number;
             maxOccupancy: number;
             sizeM2: import("@prisma/client/runtime/library").Decimal | null;
+            rentalModality: import(".prisma/client").$Enums.RentalModality | null;
         }) | null;
         booking: {
             id: string;
@@ -124,9 +125,9 @@ export declare class LeadsController {
         leadRequests: {
             id: string;
             createdAt: Date;
-            message: string;
             leadId: string;
             createdById: string;
+            message: string;
         }[];
     } & {
         id: string;
@@ -134,7 +135,6 @@ export declare class LeadsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
-        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -145,6 +145,7 @@ export declare class LeadsController {
         children: number;
         notes: string | null;
         source: string | null;
+        professionalProfileId: string | null;
     }>;
     update(id: string, dto: UpdateLeadDto): Promise<{
         id: string;
@@ -152,7 +153,6 @@ export declare class LeadsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.LeadStatus;
-        professionalProfileId: string | null;
         unitId: string | null;
         clientName: string;
         clientEmail: string | null;
@@ -163,14 +163,15 @@ export declare class LeadsController {
         children: number;
         notes: string | null;
         source: string | null;
+        professionalProfileId: string | null;
     }>;
     remove(id: string): Promise<void>;
     addNote(id: string, dto: AddNoteDto, user: CurrentUserPayload): Promise<{
         id: string;
         createdAt: Date;
-        message: string;
         leadId: string;
         createdById: string;
+        message: string;
     }>;
     convertToBooking(id: string, dto: ConvertToBookingDto, user: CurrentUserPayload): Promise<{
         id: string;
@@ -178,7 +179,6 @@ export declare class LeadsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -189,9 +189,10 @@ export declare class LeadsController {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: import("@prisma/client/runtime/library").Decimal;
-        totalAmount: import("@prisma/client/runtime/library").Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
     }>;
 }

@@ -25,19 +25,19 @@ export declare class MediaService {
     confirmForProperty(propertyId: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        mediaFileId: string;
-        caption: string | null;
         isPrimary: boolean;
+        caption: string | null;
         sortOrder: number;
         propertyId: string;
+        mediaFileId: string;
     }>;
     confirmForUnit(unitId: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        mediaFileId: string;
-        caption: string | null;
         isPrimary: boolean;
+        caption: string | null;
         sortOrder: number;
+        mediaFileId: string;
         unitId: string;
     }>;
     presignForProfessional(profileId: string, dto: PresignUploadDto, userId: string): Promise<{

@@ -52,6 +52,11 @@ enum UnitStatus {
   MAINTENANCE
 }
 
+enum RentalModality {
+  FLEX
+  TEMPORAL
+}
+
 enum AmenityCategory {
   GENERAL
   KITCHEN
@@ -326,10 +331,11 @@ model Unit {
   bathrooms    Int        @default(0) @db.SmallInt
   maxOccupancy Int        @default(1) @map("max_occupancy") @db.SmallInt
   sizeM2       Decimal?   @map("size_m2") @db.Decimal(8, 2)
-  status       UnitStatus @default(DRAFT)
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz
+  status          UnitStatus      @default(DRAFT)
+  rentalModality  RentalModality? @map("rental_modality")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz
 
   property      Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   unitImages    UnitImage[]
@@ -341,6 +347,7 @@ model Unit {
 
   @@index([propertyId])
   @@index([status])
+  @@index([rentalModality])
   @@index([deletedAt])
   @@map("units")
 }

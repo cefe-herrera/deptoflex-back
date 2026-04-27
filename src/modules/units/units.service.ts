@@ -4,7 +4,7 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { SetAvailabilityDto } from './dto/set-availability.dto';
 import { SetPricingRulesDto } from './dto/set-pricing-rules.dto';
-import { UnitStatus } from '@prisma/client';
+import { UnitStatus, RentalModality } from '@prisma/client';
 
 @Injectable()
 export class UnitsService {
@@ -16,12 +16,13 @@ export class UnitsService {
     return this.prisma.unit.create({ data: dto });
   }
 
-  async findAll(page = 1, limit = 20, propertyId?: string, status?: UnitStatus) {
+  async findAll(page = 1, limit = 20, propertyId?: string, status?: UnitStatus, rentalModality?: RentalModality) {
     const skip = (page - 1) * limit;
     const where: any = {
       deletedAt: null,
       ...(propertyId && { propertyId }),
       ...(status && { status }),
+      ...(rentalModality && { rentalModality }),
     };
     const [items, total] = await Promise.all([
       this.prisma.unit.findMany({
@@ -29,7 +30,7 @@ export class UnitsService {
         skip,
         take: limit,
         include: {
-          property: { select: { id: true, name: true } },
+          property: { select: { id: true, name: true, address: true } },
           unitImages: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
         },
         orderBy: { createdAt: 'desc' },

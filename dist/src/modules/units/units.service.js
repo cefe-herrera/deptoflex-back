@@ -24,12 +24,13 @@ let UnitsService = class UnitsService {
             throw new common_1.NotFoundException('Property not found');
         return this.prisma.unit.create({ data: dto });
     }
-    async findAll(page = 1, limit = 20, propertyId, status) {
+    async findAll(page = 1, limit = 20, propertyId, status, rentalModality) {
         const skip = (page - 1) * limit;
         const where = {
             deletedAt: null,
             ...(propertyId && { propertyId }),
             ...(status && { status }),
+            ...(rentalModality && { rentalModality }),
         };
         const [items, total] = await Promise.all([
             this.prisma.unit.findMany({
@@ -37,7 +38,7 @@ let UnitsService = class UnitsService {
                 skip,
                 take: limit,
                 include: {
-                    property: { select: { id: true, name: true } },
+                    property: { select: { id: true, name: true, address: true } },
                     unitImages: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
                 },
                 orderBy: { createdAt: 'desc' },

@@ -1,3 +1,4 @@
+import { UnitStatus, RentalModality } from '@prisma/client';
 export declare class CreateUnitDto {
     propertyId: string;
     name: string;
@@ -7,4 +8,6 @@ export declare class CreateUnitDto {
     bathrooms: number;
     maxOccupancy: number;
     sizeM2?: string;
+    status?: UnitStatus;
+    rentalModality?: RentalModality;
 }

@@ -35,8 +35,8 @@ let UnitsController = class UnitsController {
     create(dto) {
         return this.unitsService.create(dto);
     }
-    findAll(page = 1, limit = 20, propertyId, status) {
-        return this.unitsService.findAll(+page, +limit, propertyId, status);
+    findAll(page = 1, limit = 20, propertyId, status, rentalModality) {
+        return this.unitsService.findAll(+page, +limit, propertyId, status, rentalModality);
     }
     findOne(id) {
         return this.unitsService.findOne(id);
@@ -90,8 +90,9 @@ __decorate([
     __param(1, (0, common_1.Query)('limit')),
     __param(2, (0, common_1.Query)('propertyId')),
     __param(3, (0, common_1.Query)('status')),
+    __param(4, (0, common_1.Query)('rentalModality')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object, String, String]),
+    __metadata("design:paramtypes", [Object, Object, String, String, String]),
     __metadata("design:returntype", void 0)
 ], UnitsController.prototype, "findAll", null);
 __decorate([

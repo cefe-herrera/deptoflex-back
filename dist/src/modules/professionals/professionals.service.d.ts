@@ -44,8 +44,8 @@ export declare class ProfessionalsService {
                 email: string | null;
                 phone: string | null;
                 isActive: boolean;
-                taxId: string | null;
                 address: string | null;
+                taxId: string | null;
                 website: string | null;
             };
         } & {

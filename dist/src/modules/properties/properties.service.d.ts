@@ -38,6 +38,31 @@ export declare class PropertiesService {
             _count: {
                 units: number;
             };
+            propertyImages: ({
+                mediaFile: {
+                    id: string;
+                    createdAt: Date;
+                    updatedAt: Date;
+                    deletedAt: Date | null;
+                    status: import(".prisma/client").$Enums.MediaStatus;
+                    bucket: string;
+                    objectKey: string;
+                    originalName: string;
+                    mimeType: string;
+                    sizeBytes: number;
+                    url: string;
+                    confirmedAt: Date | null;
+                    uploadedById: string;
+                };
+            } & {
+                id: string;
+                createdAt: Date;
+                isPrimary: boolean;
+                caption: string | null;
+                sortOrder: number;
+                propertyId: string;
+                mediaFileId: string;
+            })[];
             address: {
                 number: string | null;
                 id: string;
@@ -54,31 +79,6 @@ export declare class PropertiesService {
                 latitude: import("@prisma/client/runtime/library").Decimal | null;
                 longitude: import("@prisma/client/runtime/library").Decimal | null;
             } | null;
-            propertyImages: ({
-                mediaFile: {
-                    id: string;
-                    createdAt: Date;
-                    updatedAt: Date;
-                    url: string;
-                    bucket: string;
-                    deletedAt: Date | null;
-                    status: import(".prisma/client").$Enums.MediaStatus;
-                    objectKey: string;
-                    originalName: string;
-                    mimeType: string;
-                    sizeBytes: number;
-                    confirmedAt: Date | null;
-                    uploadedById: string;
-                };
-            } & {
-                id: string;
-                createdAt: Date;
-                mediaFileId: string;
-                caption: string | null;
-                isPrimary: boolean;
-                sortOrder: number;
-                propertyId: string;
-            })[];
         } & {
             id: string;
             name: string;
@@ -98,6 +98,31 @@ export declare class PropertiesService {
         _count: {
             units: number;
         };
+        propertyImages: ({
+            mediaFile: {
+                id: string;
+                createdAt: Date;
+                updatedAt: Date;
+                deletedAt: Date | null;
+                status: import(".prisma/client").$Enums.MediaStatus;
+                bucket: string;
+                objectKey: string;
+                originalName: string;
+                mimeType: string;
+                sizeBytes: number;
+                url: string;
+                confirmedAt: Date | null;
+                uploadedById: string;
+            };
+        } & {
+            id: string;
+            createdAt: Date;
+            isPrimary: boolean;
+            caption: string | null;
+            sortOrder: number;
+            propertyId: string;
+            mediaFileId: string;
+        })[];
         address: {
             number: string | null;
             id: string;
@@ -114,31 +139,6 @@ export declare class PropertiesService {
             latitude: import("@prisma/client/runtime/library").Decimal | null;
             longitude: import("@prisma/client/runtime/library").Decimal | null;
         } | null;
-        propertyImages: ({
-            mediaFile: {
-                id: string;
-                createdAt: Date;
-                updatedAt: Date;
-                url: string;
-                bucket: string;
-                deletedAt: Date | null;
-                status: import(".prisma/client").$Enums.MediaStatus;
-                objectKey: string;
-                originalName: string;
-                mimeType: string;
-                sizeBytes: number;
-                confirmedAt: Date | null;
-                uploadedById: string;
-            };
-        } & {
-            id: string;
-            createdAt: Date;
-            mediaFileId: string;
-            caption: string | null;
-            isPrimary: boolean;
-            sortOrder: number;
-            propertyId: string;
-        })[];
         propertyAmenities: ({
             amenity: {
                 id: string;

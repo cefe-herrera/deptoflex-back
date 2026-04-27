@@ -10,7 +10,6 @@ export declare class BookingsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -21,10 +20,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
     }>;
     findAll(page?: number, limit?: number, userId?: string, roles?: string[]): Promise<{
         items: ({
@@ -42,7 +42,6 @@ export declare class BookingsService {
             updatedAt: Date;
             deletedAt: Date | null;
             status: import(".prisma/client").$Enums.BookingStatus;
-            professionalProfileId: string | null;
             unitId: string;
             currency: string;
             clientName: string;
@@ -53,10 +52,11 @@ export declare class BookingsService {
             adults: number;
             children: number;
             notes: string | null;
-            baseAmount: Decimal;
-            totalAmount: Decimal;
+            professionalProfileId: string | null;
             leadId: string | null;
             totalNights: number;
+            baseAmount: Decimal;
+            totalAmount: Decimal;
         })[];
         total: number;
         page: number;
@@ -127,16 +127,17 @@ export declare class BookingsService {
             bathrooms: number;
             maxOccupancy: number;
             sizeM2: Decimal | null;
+            rentalModality: import(".prisma/client").$Enums.RentalModality | null;
         };
         commission: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
             status: import(".prisma/client").$Enums.CommissionStatus;
-            professionalProfileId: string | null;
             currency: string;
             bookingId: string;
             notes: string | null;
+            professionalProfileId: string | null;
             baseAmount: Decimal;
             rate: Decimal;
             commissionAmount: Decimal;
@@ -157,7 +158,6 @@ export declare class BookingsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -168,10 +168,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
     }>;
     confirm(id: string, reason: string | undefined, changedById: string): Promise<{
         id: string;
@@ -179,7 +180,6 @@ export declare class BookingsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -190,10 +190,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
     }>;
     cancel(id: string, reason: string, changedById: string): Promise<{
         id: string;
@@ -201,7 +202,6 @@ export declare class BookingsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -212,10 +212,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
     }>;
     complete(id: string, reason: string | undefined, changedById: string): Promise<{
         id: string;
@@ -223,7 +224,6 @@ export declare class BookingsService {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -234,10 +234,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
     }>;
     getStatusHistory(id: string): Promise<({
         changedBy: {

@@ -12,7 +12,7 @@ import { PresignUploadDto } from '../media/dto/presign-upload.dto';
 import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { UnitStatus } from '@prisma/client';
+import { UnitStatus, RentalModality } from '@prisma/client';
 
 @Controller('units')
 export class UnitsController {
@@ -33,8 +33,9 @@ export class UnitsController {
     @Query('limit') limit = 20,
     @Query('propertyId') propertyId?: string,
     @Query('status') status?: UnitStatus,
+    @Query('rentalModality') rentalModality?: RentalModality,
   ) {
-    return this.unitsService.findAll(+page, +limit, propertyId, status);
+    return this.unitsService.findAll(+page, +limit, propertyId, status, rentalModality);
   }
 
   @Get(':id')

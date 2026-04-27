@@ -67,16 +67,17 @@ export declare class BookingsController {
             bathrooms: number;
             maxOccupancy: number;
             sizeM2: import("@prisma/client/runtime/library").Decimal | null;
+            rentalModality: import(".prisma/client").$Enums.RentalModality | null;
         };
         commission: {
             id: string;
             createdAt: Date;
             updatedAt: Date;
             status: import(".prisma/client").$Enums.CommissionStatus;
-            professionalProfileId: string | null;
             currency: string;
             bookingId: string;
             notes: string | null;
+            professionalProfileId: string | null;
             baseAmount: import("@prisma/client/runtime/library").Decimal;
             rate: import("@prisma/client/runtime/library").Decimal;
             commissionAmount: import("@prisma/client/runtime/library").Decimal;
@@ -97,7 +98,6 @@ export declare class BookingsController {
         updatedAt: Date;
         deletedAt: Date | null;
         status: import(".prisma/client").$Enums.BookingStatus;
-        professionalProfileId: string | null;
         unitId: string;
         currency: string;
         clientName: string;
@@ -108,9 +108,10 @@ export declare class BookingsController {
         adults: number;
         children: number;
         notes: string | null;
-        baseAmount: import("@prisma/client/runtime/library").Decimal;
-        totalAmount: import("@prisma/client/runtime/library").Decimal;
+        professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
+        baseAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
     }>;
 }
