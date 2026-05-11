@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const core_1 = require("@nestjs/core");
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
+const swagger_1 = require("@nestjs/swagger");
 const helmet_1 = __importDefault(require("helmet"));
 const compression_1 = __importDefault(require("compression"));
 const app_module_1 = require("./app.module");
@@ -30,9 +31,21 @@ async function bootstrap() {
     }));
     app.useGlobalFilters(new http_exception_filter_1.HttpExceptionFilter());
     app.useGlobalInterceptors(new common_1.ClassSerializerInterceptor(reflector), new transform_interceptor_1.TransformInterceptor());
+    const swaggerConfig = new swagger_1.DocumentBuilder()
+        .setTitle('DeptoFlex API')
+        .setDescription('API de gestión de propiedades, unidades, embajadores y reservas')
+        .setVersion('1.0')
+        .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
+        .addServer('/api/v1')
+        .build();
+    const document = swagger_1.SwaggerModule.createDocument(app, swaggerConfig);
+    swagger_1.SwaggerModule.setup('api/docs', app, document, {
+        swaggerOptions: { persistAuthorization: true },
+    });
     const port = config.get('app.port') ?? 3000;
     await app.listen(port);
     console.log(`DeptoFlex API running on port ${port}`);
+    console.log(`Swagger docs: http://localhost:${port}/api/docs`);
 }
 bootstrap();
 //# sourceMappingURL=main.js.map

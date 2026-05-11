@@ -7,6 +7,7 @@ import appConfig from './config/app.config';
 import authConfig from './config/auth.config';
 import r2Config from './config/r2.config';
 import emailConfig from './config/email.config';
+import notificationsConfig from './config/notifications.config';
 import { validationSchema } from './config/validation.schema';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -23,6 +24,7 @@ import { MediaModule } from './modules/media/media.module';
 import { R2Module } from './modules/r2/r2.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -30,7 +32,7 @@ import { RolesGuard } from './common/guards/roles.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, r2Config, emailConfig],
+      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig],
       validationSchema,
       validationOptions: { abortEarly: true },
     }),
@@ -54,6 +56,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     MediaModule,
     HealthModule,
     AdminModule,
+    NotificationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

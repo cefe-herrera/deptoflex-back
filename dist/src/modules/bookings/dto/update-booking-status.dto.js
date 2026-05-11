@@ -10,11 +10,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateBookingStatusDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 class UpdateBookingStatusDto {
     status;
     reason;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { status: { required: true, type: () => Object }, reason: { required: false, type: () => String } };
+    }
 }
 exports.UpdateBookingStatusDto = UpdateBookingStatusDto;
 __decorate([

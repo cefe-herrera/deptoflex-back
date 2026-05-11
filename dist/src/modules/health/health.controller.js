@@ -10,8 +10,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HealthController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const terminus_1 = require("@nestjs/terminus");
+const swagger_1 = require("@nestjs/swagger");
 let HealthController = class HealthController {
     health;
     memory;
@@ -29,11 +31,17 @@ exports.HealthController = HealthController;
 __decorate([
     (0, common_1.Get)(),
     (0, terminus_1.HealthCheck)(),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Health check del servicio',
+        description: 'Verifica que el servicio esté operativo y dentro de los límites de memoria. Útil para load balancers, uptime monitors y orquestadores.',
+    }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], HealthController.prototype, "check", null);
 exports.HealthController = HealthController = __decorate([
+    (0, swagger_1.ApiTags)('Health'),
     (0, common_1.Controller)('health'),
     __metadata("design:paramtypes", [terminus_1.HealthCheckService,
         terminus_1.MemoryHealthIndicator])

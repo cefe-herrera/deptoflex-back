@@ -48,25 +48,25 @@ export declare class PropertiesController {
                     id: string;
                     createdAt: Date;
                     updatedAt: Date;
+                    url: string;
+                    bucket: string;
                     deletedAt: Date | null;
                     status: import(".prisma/client").$Enums.MediaStatus;
-                    bucket: string;
                     objectKey: string;
                     originalName: string;
                     mimeType: string;
                     sizeBytes: number;
-                    url: string;
                     confirmedAt: Date | null;
                     uploadedById: string;
                 };
             } & {
                 id: string;
                 createdAt: Date;
-                isPrimary: boolean;
+                mediaFileId: string;
                 caption: string | null;
+                isPrimary: boolean;
                 sortOrder: number;
                 propertyId: string;
-                mediaFileId: string;
             })[];
             address: {
                 number: string | null;
@@ -108,25 +108,25 @@ export declare class PropertiesController {
                 id: string;
                 createdAt: Date;
                 updatedAt: Date;
+                url: string;
+                bucket: string;
                 deletedAt: Date | null;
                 status: import(".prisma/client").$Enums.MediaStatus;
-                bucket: string;
                 objectKey: string;
                 originalName: string;
                 mimeType: string;
                 sizeBytes: number;
-                url: string;
                 confirmedAt: Date | null;
                 uploadedById: string;
             };
         } & {
             id: string;
             createdAt: Date;
-            isPrimary: boolean;
+            mediaFileId: string;
             caption: string | null;
+            isPrimary: boolean;
             sortOrder: number;
             propertyId: string;
-            mediaFileId: string;
         })[];
         address: {
             number: string | null;
@@ -211,11 +211,11 @@ export declare class PropertiesController {
     confirmImage(id: string, dto: ConfirmUploadDto): Promise<{
         id: string;
         createdAt: Date;
-        isPrimary: boolean;
+        mediaFileId: string;
         caption: string | null;
+        isPrimary: boolean;
         sortOrder: number;
         propertyId: string;
-        mediaFileId: string;
     }>;
     deleteImage(id: string, imageId: string): Promise<void>;
 }

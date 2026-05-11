@@ -19,6 +19,7 @@ const app_config_1 = __importDefault(require("./config/app.config"));
 const auth_config_1 = __importDefault(require("./config/auth.config"));
 const r2_config_1 = __importDefault(require("./config/r2.config"));
 const email_config_1 = __importDefault(require("./config/email.config"));
+const notifications_config_1 = __importDefault(require("./config/notifications.config"));
 const validation_schema_1 = require("./config/validation.schema");
 const prisma_module_1 = require("./modules/prisma/prisma.module");
 const auth_module_1 = require("./modules/auth/auth.module");
@@ -35,6 +36,7 @@ const media_module_1 = require("./modules/media/media.module");
 const r2_module_1 = require("./modules/r2/r2.module");
 const health_module_1 = require("./modules/health/health.module");
 const admin_module_1 = require("./modules/admin/admin.module");
+const notifications_module_1 = require("./modules/notifications/notifications.module");
 const jwt_auth_guard_1 = require("./common/guards/jwt-auth.guard");
 const roles_guard_1 = require("./common/guards/roles.guard");
 let AppModule = class AppModule {
@@ -45,7 +47,7 @@ exports.AppModule = AppModule = __decorate([
         imports: [
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
-                load: [app_config_1.default, auth_config_1.default, r2_config_1.default, email_config_1.default],
+                load: [app_config_1.default, auth_config_1.default, r2_config_1.default, email_config_1.default, notifications_config_1.default],
                 validationSchema: validation_schema_1.validationSchema,
                 validationOptions: { abortEarly: true },
             }),
@@ -69,6 +71,7 @@ exports.AppModule = AppModule = __decorate([
             media_module_1.MediaModule,
             health_module_1.HealthModule,
             admin_module_1.AdminModule,
+            notifications_module_1.NotificationsModule,
         ],
         providers: [
             { provide: core_1.APP_GUARD, useClass: jwt_auth_guard_1.JwtAuthGuard },

@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreatePropertyDto = exports.CreatePropertyAddressDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 const client_1 = require("@prisma/client");
@@ -24,6 +25,9 @@ class CreatePropertyAddressDto {
     postalCode;
     latitude;
     longitude;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { street: { required: true, type: () => String, maxLength: 255 }, number: { required: false, type: () => String, maxLength: 20 }, apartment: { required: false, type: () => String, maxLength: 50 }, neighborhood: { required: false, type: () => String, maxLength: 100 }, city: { required: true, type: () => String, maxLength: 100 }, state: { required: false, type: () => String, maxLength: 100 }, country: { required: true, type: () => String, maxLength: 100 }, postalCode: { required: false, type: () => String, maxLength: 20 }, latitude: { required: false, type: () => Number, minimum: -90, maximum: 90 }, longitude: { required: false, type: () => Number, minimum: -180, maximum: 180 } };
+    }
 }
 exports.CreatePropertyAddressDto = CreatePropertyAddressDto;
 __decorate([
@@ -92,6 +96,9 @@ class CreatePropertyDto {
     type;
     status;
     address;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { companyId: { required: false, type: () => String, format: "uuid" }, name: { required: true, type: () => String, maxLength: 200 }, description: { required: false, type: () => String }, type: { required: true, type: () => Object }, status: { required: false, type: () => Object }, address: { required: false, type: () => require("./create-property.dto").CreatePropertyAddressDto } };
+    }
 }
 exports.CreatePropertyDto = CreatePropertyDto;
 __decorate([

@@ -10,12 +10,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ConfirmUploadDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class ConfirmUploadDto {
     mediaFileId;
     caption;
     isPrimary;
     sortOrder;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { mediaFileId: { required: true, type: () => String, format: "uuid" }, caption: { required: false, type: () => String, maxLength: 255 }, isPrimary: { required: false, type: () => Boolean }, sortOrder: { required: false, type: () => Number, minimum: 0 } };
+    }
 }
 exports.ConfirmUploadDto = ConfirmUploadDto;
 __decorate([

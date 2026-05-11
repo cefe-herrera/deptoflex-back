@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SetPricingRulesDto = exports.PricingRuleDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 const client_1 = require("@prisma/client");
@@ -23,6 +24,9 @@ class PricingRuleDto {
     minNights;
     maxNights;
     isDefault;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { name: { required: false, type: () => String, maxLength: 100 }, startDate: { required: false, type: () => String }, endDate: { required: false, type: () => String }, baseRate: { required: true, type: () => Number, minimum: 0 }, currency: { required: false, type: () => String }, rateType: { required: true, type: () => Object }, minNights: { required: true, type: () => Number, minimum: 1 }, maxNights: { required: false, type: () => Number }, isDefault: { required: true, type: () => Boolean } };
+    }
 }
 exports.PricingRuleDto = PricingRuleDto;
 __decorate([
@@ -71,6 +75,9 @@ __decorate([
 ], PricingRuleDto.prototype, "isDefault", void 0);
 class SetPricingRulesDto {
     rules;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { rules: { required: true, type: () => [require("./set-pricing-rules.dto").PricingRuleDto] } };
+    }
 }
 exports.SetPricingRulesDto = SetPricingRulesDto;
 __decorate([

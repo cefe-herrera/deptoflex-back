@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PresignUploadDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -17,6 +18,9 @@ class PresignUploadDto {
     filename;
     contentType;
     fileSize;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { filename: { required: true, type: () => String, maxLength: 255 }, contentType: { required: true, type: () => String, enum: ALLOWED_MIME_TYPES }, fileSize: { required: true, type: () => Number, minimum: 1, maximum: MAX_FILE_SIZE } };
+    }
 }
 exports.PresignUploadDto = PresignUploadDto;
 __decorate([

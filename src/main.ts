@@ -1,6 +1,7 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
@@ -36,8 +37,24 @@ async function bootstrap() {
     new TransformInterceptor(),
   );
 
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('DeptoFlex API')
+    .setDescription('API de gestión de propiedades, unidades, embajadores y reservas')
+    .setVersion('1.0')
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      'access-token',
+    )
+    .addServer('/api/v1')
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
+
   const port = config.get<number>('app.port') ?? 3000;
   await app.listen(port);
   console.log(`DeptoFlex API running on port ${port}`);
+  console.log(`Swagger docs: http://localhost:${port}/api/docs`);
 }
 bootstrap();

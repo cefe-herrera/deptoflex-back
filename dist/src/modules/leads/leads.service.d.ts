@@ -122,9 +122,9 @@ export declare class LeadsService {
         leadRequests: {
             id: string;
             createdAt: Date;
+            message: string;
             leadId: string;
             createdById: string;
-            message: string;
         }[];
     } & {
         id: string;
@@ -165,9 +165,9 @@ export declare class LeadsService {
     addNote(leadId: string, dto: AddNoteDto, createdById: string): Promise<{
         id: string;
         createdAt: Date;
+        message: string;
         leadId: string;
         createdById: string;
-        message: string;
     }>;
     convertToBooking(leadId: string, dto: ConvertToBookingDto, changedById: string): Promise<{
         id: string;
@@ -185,11 +185,11 @@ export declare class LeadsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: import("@prisma/client/runtime/library").Decimal;
-        totalAmount: import("@prisma/client/runtime/library").Decimal;
     }>;
     softDelete(id: string): Promise<void>;
 }

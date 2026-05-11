@@ -146,6 +146,8 @@ model User {
   mediaFiles           MediaFile[]
   activityLogs         ActivityLog[]
   bookingStatusChanges BookingStatusHistory[]
+  notifications        Notification[]
+  deviceTokens         DeviceToken[]
 
   @@index([email])
   @@index([deletedAt])
@@ -649,4 +651,70 @@ model ActivityLog {
   @@index([userId])
   @@index([createdAt(sort: Desc)])
   @@map("activity_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  LEAD_NEW
+  LEAD_UPDATED
+  BOOKING_CREATED
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  AMBASSADOR_REQUEST
+  AMBASSADOR_VERIFIED
+  AMBASSADOR_REJECTED
+  PROPERTY_PUBLISHED
+  COMMISSION_CREATED
+  GENERIC
+}
+
+enum DevicePlatform {
+  WEB
+  IOS
+  ANDROID
+}
+
+enum DeviceProvider {
+  FCM
+  WEBPUSH
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  title     String           @db.VarChar(200)
+  body      String           @db.Text
+  data      Json?            @db.JsonB
+  readAt    DateTime?        @map("read_at") @db.Timestamptz
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+model DeviceToken {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+  platform     DevicePlatform
+  provider     DeviceProvider
+  token        String         @db.Text
+  endpoint     String?        @db.Text
+  p256dh       String?        @db.VarChar(255)
+  authKey      String?        @map("auth_key") @db.VarChar(255)
+  userAgent    String?        @map("user_agent") @db.VarChar(500)
+  lastUsedAt   DateTime       @default(now()) @map("last_used_at") @db.Timestamptz
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@map("device_tokens")
 }

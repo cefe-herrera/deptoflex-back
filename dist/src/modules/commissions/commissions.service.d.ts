@@ -10,8 +10,8 @@ export declare class CommissionsService {
         currency: string;
         bookingId: string;
         notes: string | null;
-        professionalProfileId: string | null;
         baseAmount: import("@prisma/client/runtime/library").Decimal;
+        professionalProfileId: string | null;
         rate: import("@prisma/client/runtime/library").Decimal;
         commissionAmount: import("@prisma/client/runtime/library").Decimal;
         paidAt: Date | null;

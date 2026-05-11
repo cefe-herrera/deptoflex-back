@@ -10,9 +10,11 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const admin_service_1 = require("./admin.service");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const swagger_1 = require("@nestjs/swagger");
 let AdminController = class AdminController {
     adminService;
     constructor(adminService) {
@@ -25,11 +27,18 @@ let AdminController = class AdminController {
 exports.AdminController = AdminController;
 __decorate([
     (0, common_1.Get)('stats'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Estadísticas generales del sistema',
+        description: 'Devuelve métricas agregadas (usuarios, propiedades, bookings, etc.) para el dashboard de administración. Solo accesible para usuarios con rol ADMIN.',
+    }),
+    openapi.ApiResponse({ status: 200 }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], AdminController.prototype, "getStats", null);
 exports.AdminController = AdminController = __decorate([
+    (0, swagger_1.ApiTags)('Admin'),
+    (0, swagger_1.ApiBearerAuth)('access-token'),
     (0, common_1.Controller)('admin'),
     (0, roles_decorator_1.Roles)('ADMIN'),
     __metadata("design:paramtypes", [admin_service_1.AdminService])

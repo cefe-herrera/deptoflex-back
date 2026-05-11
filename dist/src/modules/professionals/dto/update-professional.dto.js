@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminUpdateProfessionalDto = exports.UpdateProfessionalDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 class UpdateProfessionalDto {
@@ -18,6 +19,9 @@ class UpdateProfessionalDto {
     phone;
     bio;
     licenseNumber;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { firstName: { required: false, type: () => String, maxLength: 100 }, lastName: { required: false, type: () => String, maxLength: 100 }, phone: { required: false, type: () => String, maxLength: 30 }, bio: { required: false, type: () => String }, licenseNumber: { required: false, type: () => String, maxLength: 100 } };
+    }
 }
 exports.UpdateProfessionalDto = UpdateProfessionalDto;
 __decorate([
@@ -52,6 +56,9 @@ __decorate([
 class AdminUpdateProfessionalDto extends UpdateProfessionalDto {
     defaultCommissionRate;
     status;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { defaultCommissionRate: { required: false, type: () => String }, status: { required: false, type: () => Object } };
+    }
 }
 exports.AdminUpdateProfessionalDto = AdminUpdateProfessionalDto;
 __decorate([

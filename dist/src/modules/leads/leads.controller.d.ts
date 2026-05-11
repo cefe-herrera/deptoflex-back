@@ -125,9 +125,9 @@ export declare class LeadsController {
         leadRequests: {
             id: string;
             createdAt: Date;
+            message: string;
             leadId: string;
             createdById: string;
-            message: string;
         }[];
     } & {
         id: string;
@@ -169,9 +169,9 @@ export declare class LeadsController {
     addNote(id: string, dto: AddNoteDto, user: CurrentUserPayload): Promise<{
         id: string;
         createdAt: Date;
+        message: string;
         leadId: string;
         createdById: string;
-        message: string;
     }>;
     convertToBooking(id: string, dto: ConvertToBookingDto, user: CurrentUserPayload): Promise<{
         id: string;
@@ -189,10 +189,10 @@ export declare class LeadsController {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: import("@prisma/client/runtime/library").Decimal;
+        totalAmount: import("@prisma/client/runtime/library").Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: import("@prisma/client/runtime/library").Decimal;
-        totalAmount: import("@prisma/client/runtime/library").Decimal;
     }>;
 }

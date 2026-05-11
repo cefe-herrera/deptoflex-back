@@ -10,8 +10,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommissionsController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const commissions_service_1 = require("./commissions.service");
+const swagger_1 = require("@nestjs/swagger");
 let CommissionsController = class CommissionsController {
     commissionsService;
     constructor(commissionsService) {
@@ -24,11 +26,18 @@ let CommissionsController = class CommissionsController {
 exports.CommissionsController = CommissionsController;
 __decorate([
     (0, common_1.Get)(),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Listar comisiones',
+        description: 'Devuelve el listado de comisiones generadas por bookings/leads convertidos por profesionales y embajadores.',
+    }),
+    openapi.ApiResponse({ status: 200 }),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], CommissionsController.prototype, "findAll", null);
 exports.CommissionsController = CommissionsController = __decorate([
+    (0, swagger_1.ApiTags)('Commissions'),
+    (0, swagger_1.ApiBearerAuth)('access-token'),
     (0, common_1.Controller)('commissions'),
     __metadata("design:paramtypes", [commissions_service_1.CommissionsService])
 ], CommissionsController);

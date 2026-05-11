@@ -10,10 +10,14 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateUserDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class UpdateUserDto {
     phone;
     isActive;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { phone: { required: false, type: () => String, maxLength: 30 }, isActive: { required: false, type: () => Boolean } };
+    }
 }
 exports.UpdateUserDto = UpdateUserDto;
 __decorate([

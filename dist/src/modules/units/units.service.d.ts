@@ -11,17 +11,17 @@ export declare class UnitsService {
         id: string;
         name: string;
         description: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        status: import(".prisma/client").$Enums.UnitStatus;
+        propertyId: string;
         floor: number | null;
         bedrooms: number;
         bathrooms: number;
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
-        status: import(".prisma/client").$Enums.UnitStatus;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
-        createdAt: Date;
-        updatedAt: Date;
-        deletedAt: Date | null;
-        propertyId: string;
     }>;
     findAll(page?: number, limit?: number, propertyId?: string, status?: UnitStatus, rentalModality?: RentalModality): Promise<{
         items: ({
@@ -48,43 +48,43 @@ export declare class UnitsService {
             unitImages: ({
                 mediaFile: {
                     id: string;
-                    status: import(".prisma/client").$Enums.MediaStatus;
                     createdAt: Date;
                     updatedAt: Date;
-                    deletedAt: Date | null;
-                    uploadedById: string;
+                    url: string;
                     bucket: string;
+                    deletedAt: Date | null;
+                    status: import(".prisma/client").$Enums.MediaStatus;
                     objectKey: string;
                     originalName: string;
                     mimeType: string;
                     sizeBytes: number;
-                    url: string;
                     confirmedAt: Date | null;
+                    uploadedById: string;
                 };
             } & {
                 id: string;
                 createdAt: Date;
-                isPrimary: boolean;
-                unitId: string;
                 mediaFileId: string;
                 caption: string | null;
+                isPrimary: boolean;
                 sortOrder: number;
+                unitId: string;
             })[];
         } & {
             id: string;
             name: string;
             description: string | null;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            status: import(".prisma/client").$Enums.UnitStatus;
+            propertyId: string;
             floor: number | null;
             bedrooms: number;
             bathrooms: number;
             maxOccupancy: number;
             sizeM2: import("@prisma/client/runtime/library").Decimal | null;
-            status: import(".prisma/client").$Enums.UnitStatus;
             rentalModality: import(".prisma/client").$Enums.RentalModality | null;
-            createdAt: Date;
-            updatedAt: Date;
-            deletedAt: Date | null;
-            propertyId: string;
         })[];
         total: number;
         page: number;
@@ -112,37 +112,37 @@ export declare class UnitsService {
             id: string;
             name: string;
             description: string | null;
-            status: import(".prisma/client").$Enums.PropertyStatus;
             createdAt: Date;
             updatedAt: Date;
             deletedAt: Date | null;
-            companyId: string | null;
             type: import(".prisma/client").$Enums.PropertyType;
+            status: import(".prisma/client").$Enums.PropertyStatus;
+            companyId: string | null;
         };
         unitImages: ({
             mediaFile: {
                 id: string;
-                status: import(".prisma/client").$Enums.MediaStatus;
                 createdAt: Date;
                 updatedAt: Date;
-                deletedAt: Date | null;
-                uploadedById: string;
+                url: string;
                 bucket: string;
+                deletedAt: Date | null;
+                status: import(".prisma/client").$Enums.MediaStatus;
                 objectKey: string;
                 originalName: string;
                 mimeType: string;
                 sizeBytes: number;
-                url: string;
                 confirmedAt: Date | null;
+                uploadedById: string;
             };
         } & {
             id: string;
             createdAt: Date;
-            isPrimary: boolean;
-            unitId: string;
             mediaFileId: string;
             caption: string | null;
+            isPrimary: boolean;
             sortOrder: number;
+            unitId: string;
         })[];
         unitAmenities: ({
             amenity: {
@@ -163,7 +163,6 @@ export declare class UnitsService {
             createdAt: Date;
             updatedAt: Date;
             unitId: string;
-            isDefault: boolean;
             startDate: Date | null;
             endDate: Date | null;
             baseRate: import("@prisma/client/runtime/library").Decimal;
@@ -171,38 +170,39 @@ export declare class UnitsService {
             rateType: import(".prisma/client").$Enums.RateType;
             minNights: number;
             maxNights: number | null;
+            isDefault: boolean;
         }[];
     } & {
         id: string;
         name: string;
         description: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        status: import(".prisma/client").$Enums.UnitStatus;
+        propertyId: string;
         floor: number | null;
         bedrooms: number;
         bathrooms: number;
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
-        status: import(".prisma/client").$Enums.UnitStatus;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
-        createdAt: Date;
-        updatedAt: Date;
-        deletedAt: Date | null;
-        propertyId: string;
     }>;
     update(id: string, dto: UpdateUnitDto): Promise<{
         id: string;
         name: string;
         description: string | null;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        status: import(".prisma/client").$Enums.UnitStatus;
+        propertyId: string;
         floor: number | null;
         bedrooms: number;
         bathrooms: number;
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
-        status: import(".prisma/client").$Enums.UnitStatus;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
-        createdAt: Date;
-        updatedAt: Date;
-        deletedAt: Date | null;
-        propertyId: string;
     }>;
     softDelete(id: string): Promise<void>;
     getAvailability(unitId: string, from?: string, to?: string): Promise<{
@@ -233,7 +233,6 @@ export declare class UnitsService {
         createdAt: Date;
         updatedAt: Date;
         unitId: string;
-        isDefault: boolean;
         startDate: Date | null;
         endDate: Date | null;
         baseRate: import("@prisma/client/runtime/library").Decimal;
@@ -241,6 +240,7 @@ export declare class UnitsService {
         rateType: import(".prisma/client").$Enums.RateType;
         minNights: number;
         maxNights: number | null;
+        isDefault: boolean;
     }[]>;
     setRates(unitId: string, dto: SetPricingRulesDto): Promise<import(".prisma/client").Prisma.BatchPayload>;
     addAmenity(unitId: string, amenityId: string): Promise<{

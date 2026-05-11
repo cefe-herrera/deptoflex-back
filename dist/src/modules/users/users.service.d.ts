@@ -12,12 +12,12 @@ export declare class UsersService {
                     name: string;
                 };
             }[];
+            email: string;
             professionalProfile: {
                 firstName: string;
                 lastName: string;
                 status: import(".prisma/client").$Enums.ProfessionalStatus;
             } | null;
-            email: string;
             emailVerified: boolean;
             isActive: boolean;
         }[];
@@ -35,6 +35,7 @@ export declare class UsersService {
                 name: string;
             };
         }[];
+        email: string;
         professionalProfile: {
             id: string;
             createdAt: Date;
@@ -52,7 +53,6 @@ export declare class UsersService {
             status: import(".prisma/client").$Enums.ProfessionalStatus;
             ambassadorRequestedAt: Date | null;
         } | null;
-        email: string;
         emailVerified: boolean;
         isActive: boolean;
     }>;

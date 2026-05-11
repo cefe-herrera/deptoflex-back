@@ -13,6 +13,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PropertiesController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const properties_service_1 = require("./properties.service");
 const create_property_dto_1 = require("./dto/create-property.dto");
@@ -23,6 +24,7 @@ const presign_upload_dto_1 = require("../media/dto/presign-upload.dto");
 const confirm_upload_dto_1 = require("../media/dto/confirm-upload.dto");
 const current_user_decorator_1 = require("../../common/decorators/current-user.decorator");
 const roles_decorator_1 = require("../../common/decorators/roles.decorator");
+const swagger_1 = require("@nestjs/swagger");
 let PropertiesController = class PropertiesController {
     propertiesService;
     mediaService;
@@ -65,6 +67,11 @@ exports.PropertiesController = PropertiesController;
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Crear una propiedad',
+        description: 'Registra una nueva propiedad (edificio/complejo) que luego puede contener unidades. Solo ADMIN/OPERATOR.',
+    }),
+    openapi.ApiResponse({ status: 201, type: Object }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_property_dto_1.CreatePropertyDto]),
@@ -72,6 +79,11 @@ __decorate([
 ], PropertiesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)(),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Listar propiedades',
+        description: 'Devuelve propiedades paginadas con filtros por ubicación, amenities, precio, etc. (ver `QueryPropertiesDto`).',
+    }),
+    openapi.ApiResponse({ status: 200 }),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [query_properties_dto_1.QueryPropertiesDto]),
@@ -79,6 +91,12 @@ __decorate([
 ], PropertiesController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Obtener propiedad por ID',
+        description: 'Devuelve el detalle de una propiedad incluyendo unidades, amenities e imágenes.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -87,6 +105,12 @@ __decorate([
 __decorate([
     (0, common_1.Patch)(':id'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Actualizar propiedad',
+        description: 'Modifica datos de una propiedad existente. Solo ADMIN/OPERATOR.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -97,6 +121,12 @@ __decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)('ADMIN'),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Eliminar propiedad (soft delete)',
+        description: 'Marca la propiedad como eliminada sin borrarla físicamente. Solo ADMIN.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.NO_CONTENT }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -105,6 +135,12 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/amenities'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Agregar amenity a la propiedad',
+        description: 'Asocia una amenity existente a la propiedad indicada. Solo ADMIN/OPERATOR.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: 201 }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)('amenityId', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -115,6 +151,11 @@ __decorate([
     (0, common_1.Delete)(':id/amenities/:amenityId'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Quitar amenity de la propiedad',
+        description: 'Desasocia una amenity de la propiedad. Solo ADMIN/OPERATOR.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.NO_CONTENT }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Param)('amenityId', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -124,6 +165,12 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/images/presign'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Presign de subida de imagen de propiedad',
+        description: 'Genera una URL prefirmada (S3) para subir una imagen de la propiedad directamente desde el cliente.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: 201 }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, current_user_decorator_1.CurrentUser)()),
@@ -134,6 +181,12 @@ __decorate([
 __decorate([
     (0, common_1.Post)(':id/images/confirm'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Confirmar subida de imagen de propiedad',
+        description: 'Confirma que la imagen fue subida correctamente y la registra en la galería de la propiedad.',
+    }),
+    (0, swagger_1.ApiParam)({ name: 'id', type: String, format: 'uuid' }),
+    openapi.ApiResponse({ status: 201 }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -144,6 +197,11 @@ __decorate([
     (0, common_1.Delete)(':id/images/:imageId'),
     (0, roles_decorator_1.Roles)('ADMIN', 'OPERATOR'),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Eliminar imagen de propiedad',
+        description: 'Elimina una imagen de la galería de la propiedad (tanto en DB como en S3).',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.NO_CONTENT }),
     __param(0, (0, common_1.Param)('id', common_1.ParseUUIDPipe)),
     __param(1, (0, common_1.Param)('imageId', common_1.ParseUUIDPipe)),
     __metadata("design:type", Function),
@@ -151,6 +209,8 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], PropertiesController.prototype, "deleteImage", null);
 exports.PropertiesController = PropertiesController = __decorate([
+    (0, swagger_1.ApiTags)('Properties'),
+    (0, swagger_1.ApiBearerAuth)('access-token'),
     (0, common_1.Controller)('properties'),
     __metadata("design:paramtypes", [properties_service_1.PropertiesService,
         media_service_1.MediaService])

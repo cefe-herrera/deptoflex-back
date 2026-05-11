@@ -13,8 +13,10 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
+const openapi = require("@nestjs/swagger");
 const common_1 = require("@nestjs/common");
 const throttler_1 = require("@nestjs/throttler");
+const swagger_1 = require("@nestjs/swagger");
 const auth_service_1 = require("./auth.service");
 const register_dto_1 = require("./dto/register.dto");
 const verify_email_dto_1 = require("./dto/verify-email.dto");
@@ -85,6 +87,11 @@ __decorate([
     (0, throttler_1.Throttle)({ auth: { limit: 5, ttl: 60000 } }),
     (0, common_1.Post)('register'),
     (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Registrar un nuevo usuario',
+        description: 'Crea una cuenta con email y contraseña y envía un mail de verificación. Limitado a 5 intentos por minuto por IP.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.CREATED }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [register_dto_1.RegisterDto]),
@@ -95,6 +102,11 @@ __decorate([
     (0, throttler_1.Throttle)({ auth: { limit: 5, ttl: 60000 } }),
     (0, common_1.Post)('login'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Login con email y contraseña',
+        description: 'Autentica al usuario y devuelve `accessToken` + `refreshToken`. Registra user-agent e IP para auditoría. Limitado a 5 intentos por minuto.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
@@ -106,6 +118,11 @@ __decorate([
     (0, throttler_1.Throttle)({ auth: { limit: 5, ttl: 60000 } }),
     (0, common_1.Post)('google'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Login con Google',
+        description: 'Autentica al usuario validando un ID token de Google. Crea la cuenta automáticamente si no existe.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
@@ -117,6 +134,11 @@ __decorate([
     (0, throttler_1.Throttle)({ auth: { limit: 5, ttl: 60000 } }),
     (0, common_1.Post)('apple'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Login con Apple',
+        description: 'Autentica al usuario validando un identity token de Apple Sign In. Crea la cuenta automáticamente si no existe.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
@@ -127,6 +149,11 @@ __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('refresh'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Renovar tokens',
+        description: 'Intercambia un `refreshToken` válido por un nuevo par de tokens (rotación). El refresh anterior queda invalidado.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __metadata("design:type", Function),
@@ -136,6 +163,11 @@ __decorate([
 __decorate([
     (0, common_1.Post)('logout'),
     (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Cerrar sesión',
+        description: 'Revoca el `refreshToken` enviado, invalidando esa sesión. Otras sesiones del usuario permanecen activas.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.NO_CONTENT }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [logout_dto_1.LogoutDto]),
@@ -145,6 +177,11 @@ __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('verify-email'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Verificar email (POST)',
+        description: 'Confirma el email del usuario usando el token enviado al correo durante el registro.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [verify_email_dto_1.VerifyEmailDto]),
@@ -154,6 +191,11 @@ __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Get)('verify-email'),
     (0, common_1.Redirect)('https://deptoflex-front-jg6i.vercel.app/login', 302),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Verificar email (GET con redirect)',
+        description: 'Variante GET pensada para que el usuario haga click directamente en el link del mail. Verifica el token y redirige al login del frontend.',
+    }),
+    openapi.ApiResponse({ status: 200 }),
     __param(0, (0, common_2.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [verify_email_dto_1.VerifyEmailDto]),
@@ -164,6 +206,11 @@ __decorate([
     (0, throttler_1.Throttle)({ auth: { limit: 3, ttl: 60000 } }),
     (0, common_1.Post)('forgot-password'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Solicitar reset de contraseña',
+        description: 'Envía un mail con un link para resetear la contraseña. Por seguridad responde 200 incluso si el email no existe. Limitado a 3 por minuto.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [forgot_password_dto_1.ForgotPasswordDto]),
@@ -173,6 +220,11 @@ __decorate([
     (0, public_decorator_1.Public)(),
     (0, common_1.Post)('reset-password'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Resetear contraseña',
+        description: 'Setea una nueva contraseña usando el token recibido por email en el flujo de forgot-password.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [reset_password_dto_1.ResetPasswordDto]),
@@ -180,12 +232,19 @@ __decorate([
 ], AuthController.prototype, "resetPassword", null);
 __decorate([
     (0, common_1.Get)('me'),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Datos del usuario autenticado',
+        description: 'Devuelve el perfil del usuario actual incluyendo roles y datos básicos. Requiere `accessToken` válido.',
+    }),
+    openapi.ApiResponse({ status: 200, type: Object }),
     __param(0, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "getMe", null);
 exports.AuthController = AuthController = __decorate([
+    (0, swagger_1.ApiTags)('Auth'),
+    (0, swagger_1.ApiBearerAuth)('access-token'),
     (0, common_1.UseGuards)(throttler_1.ThrottlerGuard),
     (0, common_1.Controller)('auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])

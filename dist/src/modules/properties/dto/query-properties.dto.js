@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.QueryPropertiesDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 const class_transformer_1 = require("class-transformer");
@@ -20,6 +21,9 @@ class QueryPropertiesDto {
     city;
     page = 1;
     limit = 20;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { companyId: { required: false, type: () => String, format: "uuid" }, status: { required: false, type: () => Object }, type: { required: false, type: () => Object }, city: { required: false, type: () => String }, page: { required: false, type: () => Number, default: 1, minimum: 1 }, limit: { required: false, type: () => Number, default: 20, minimum: 1, maximum: 100 } };
+    }
 }
 exports.QueryPropertiesDto = QueryPropertiesDto;
 __decorate([

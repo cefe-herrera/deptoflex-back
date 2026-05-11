@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateBookingDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class CreateBookingDto {
     leadId;
@@ -26,6 +27,9 @@ class CreateBookingDto {
     totalAmount;
     currency;
     notes;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { leadId: { required: false, type: () => String, format: "uuid" }, unitId: { required: true, type: () => String, format: "uuid" }, professionalProfileId: { required: false, type: () => String, format: "uuid" }, clientName: { required: true, type: () => String, maxLength: 200 }, clientEmail: { required: false, type: () => String }, clientPhone: { required: false, type: () => String }, checkInDate: { required: true, type: () => String }, checkOutDate: { required: true, type: () => String }, adults: { required: true, type: () => Number, minimum: 1 }, children: { required: false, type: () => Number, minimum: 0 }, baseAmount: { required: true, type: () => Number, minimum: 0 }, totalAmount: { required: true, type: () => Number, minimum: 0 }, currency: { required: false, type: () => String }, notes: { required: false, type: () => String } };
+    }
 }
 exports.CreateBookingDto = CreateBookingDto;
 __decorate([

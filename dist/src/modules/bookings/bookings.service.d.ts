@@ -20,11 +20,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
     }>;
     findAll(page?: number, limit?: number, userId?: string, roles?: string[]): Promise<{
         items: ({
@@ -52,11 +52,11 @@ export declare class BookingsService {
             adults: number;
             children: number;
             notes: string | null;
+            baseAmount: Decimal;
+            totalAmount: Decimal;
             professionalProfileId: string | null;
             leadId: string | null;
             totalNights: number;
-            baseAmount: Decimal;
-            totalAmount: Decimal;
         })[];
         total: number;
         page: number;
@@ -137,8 +137,8 @@ export declare class BookingsService {
             currency: string;
             bookingId: string;
             notes: string | null;
-            professionalProfileId: string | null;
             baseAmount: Decimal;
+            professionalProfileId: string | null;
             rate: Decimal;
             commissionAmount: Decimal;
             paidAt: Date | null;
@@ -168,11 +168,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
     }>;
     confirm(id: string, reason: string | undefined, changedById: string): Promise<{
         id: string;
@@ -190,11 +190,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
     }>;
     cancel(id: string, reason: string, changedById: string): Promise<{
         id: string;
@@ -212,11 +212,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
     }>;
     complete(id: string, reason: string | undefined, changedById: string): Promise<{
         id: string;
@@ -234,11 +234,11 @@ export declare class BookingsService {
         adults: number;
         children: number;
         notes: string | null;
+        baseAmount: Decimal;
+        totalAmount: Decimal;
         professionalProfileId: string | null;
         leadId: string | null;
         totalNights: number;
-        baseAmount: Decimal;
-        totalAmount: Decimal;
     }>;
     getStatusHistory(id: string): Promise<({
         changedBy: {

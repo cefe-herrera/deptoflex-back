@@ -10,12 +10,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateAmenityDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 class CreateAmenityDto {
     name;
     category;
     icon;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { name: { required: true, type: () => String, maxLength: 100 }, category: { required: true, type: () => Object }, icon: { required: false, type: () => String, maxLength: 50 } };
+    }
 }
 exports.CreateAmenityDto = CreateAmenityDto;
 __decorate([

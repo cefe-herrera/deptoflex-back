@@ -10,12 +10,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateLeadDto = void 0;
+const openapi = require("@nestjs/swagger");
 const mapped_types_1 = require("@nestjs/mapped-types");
 const class_validator_1 = require("class-validator");
 const client_1 = require("@prisma/client");
 const create_lead_dto_1 = require("./create-lead.dto");
 class UpdateLeadDto extends (0, mapped_types_1.PartialType)(create_lead_dto_1.CreateLeadDto) {
     status;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { status: { required: false, type: () => Object } };
+    }
 }
 exports.UpdateLeadDto = UpdateLeadDto;
 __decorate([

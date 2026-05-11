@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateLeadDto = void 0;
+const openapi = require("@nestjs/swagger");
 const class_validator_1 = require("class-validator");
 class CreateLeadDto {
     unitId;
@@ -22,6 +23,9 @@ class CreateLeadDto {
     children;
     notes;
     source;
+    static _OPENAPI_METADATA_FACTORY() {
+        return { unitId: { required: false, type: () => String, format: "uuid" }, clientName: { required: true, type: () => String, maxLength: 200 }, clientEmail: { required: false, type: () => String, format: "email" }, clientPhone: { required: false, type: () => String, maxLength: 30 }, checkInDate: { required: false, type: () => String }, checkOutDate: { required: false, type: () => String }, adults: { required: true, type: () => Number, minimum: 1 }, children: { required: false, type: () => Number, minimum: 0 }, notes: { required: false, type: () => String }, source: { required: false, type: () => String, maxLength: 100 } };
+    }
 }
 exports.CreateLeadDto = CreateLeadDto;
 __decorate([
