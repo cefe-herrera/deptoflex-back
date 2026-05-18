@@ -32,6 +32,10 @@ export declare class PropertiesService {
         type: import(".prisma/client").$Enums.PropertyType;
         status: import(".prisma/client").$Enums.PropertyStatus;
         companyId: string | null;
+        cloudbedsWidgetPropertyId: string | null;
+        cloudbedsBookingSlug: string | null;
+        defaultCurrency: string;
+        defaultLanguage: string;
     }>;
     findAll(query: QueryPropertiesDto): Promise<{
         items: ({
@@ -89,6 +93,10 @@ export declare class PropertiesService {
             type: import(".prisma/client").$Enums.PropertyType;
             status: import(".prisma/client").$Enums.PropertyStatus;
             companyId: string | null;
+            cloudbedsWidgetPropertyId: string | null;
+            cloudbedsBookingSlug: string | null;
+            defaultCurrency: string;
+            defaultLanguage: string;
         })[];
         total: number;
         page: number;
@@ -162,6 +170,10 @@ export declare class PropertiesService {
         type: import(".prisma/client").$Enums.PropertyType;
         status: import(".prisma/client").$Enums.PropertyStatus;
         companyId: string | null;
+        cloudbedsWidgetPropertyId: string | null;
+        cloudbedsBookingSlug: string | null;
+        defaultCurrency: string;
+        defaultLanguage: string;
     }>;
     update(id: string, dto: UpdatePropertyDto): Promise<{
         address: {
@@ -190,6 +202,10 @@ export declare class PropertiesService {
         type: import(".prisma/client").$Enums.PropertyType;
         status: import(".prisma/client").$Enums.PropertyStatus;
         companyId: string | null;
+        cloudbedsWidgetPropertyId: string | null;
+        cloudbedsBookingSlug: string | null;
+        defaultCurrency: string;
+        defaultLanguage: string;
     }>;
     softDelete(id: string): Promise<void>;
     addAmenity(propertyId: string, amenityId: string): Promise<{

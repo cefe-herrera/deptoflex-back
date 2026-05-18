@@ -17,4 +17,8 @@ export class CreateUnitDto {
   @IsOptional() @Transform(({ value }) => value != null ? String(value) : undefined) @IsString() sizeM2?: string;
   @IsOptional() @IsEnum(UnitStatus) status?: UnitStatus;
   @IsOptional() @IsEnum(RentalModality) rentalModality?: RentalModality;
+
+  // Cloudbeds mapping (optional)
+  @IsOptional() @IsString() @MaxLength(50) cloudbedsRoomTypeId?: string;
+  @IsOptional() @IsString() @MaxLength(50) cloudbedsUnitId?: string;
 }

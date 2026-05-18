@@ -25,8 +25,10 @@ class CreateUnitDto {
     sizeM2;
     status;
     rentalModality;
+    cloudbedsRoomTypeId;
+    cloudbedsUnitId;
     static _OPENAPI_METADATA_FACTORY() {
-        return { propertyId: { required: true, type: () => String, format: "uuid" }, name: { required: true, type: () => String, maxLength: 100 }, description: { required: false, type: () => String }, floor: { required: false, type: () => Number }, bedrooms: { required: true, type: () => Number, minimum: 0, maximum: 20 }, bathrooms: { required: true, type: () => Number, minimum: 0, maximum: 10 }, maxOccupancy: { required: true, type: () => Number, minimum: 1, maximum: 50 }, sizeM2: { required: false, type: () => String }, status: { required: false, type: () => Object }, rentalModality: { required: false, type: () => Object } };
+        return { propertyId: { required: true, type: () => String, format: "uuid" }, name: { required: true, type: () => String, maxLength: 100 }, description: { required: false, type: () => String }, floor: { required: false, type: () => Number }, bedrooms: { required: true, type: () => Number, minimum: 0, maximum: 20 }, bathrooms: { required: true, type: () => Number, minimum: 0, maximum: 10 }, maxOccupancy: { required: true, type: () => Number, minimum: 1, maximum: 50 }, sizeM2: { required: false, type: () => String }, status: { required: false, type: () => Object }, rentalModality: { required: false, type: () => Object }, cloudbedsRoomTypeId: { required: false, type: () => String, maxLength: 50 }, cloudbedsUnitId: { required: false, type: () => String, maxLength: 50 } };
     }
 }
 exports.CreateUnitDto = CreateUnitDto;
@@ -84,4 +86,16 @@ __decorate([
     (0, class_validator_1.IsEnum)(client_1.RentalModality),
     __metadata("design:type", String)
 ], CreateUnitDto.prototype, "rentalModality", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(50),
+    __metadata("design:type", String)
+], CreateUnitDto.prototype, "cloudbedsRoomTypeId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(50),
+    __metadata("design:type", String)
+], CreateUnitDto.prototype, "cloudbedsUnitId", void 0);
 //# sourceMappingURL=create-unit.dto.js.map

@@ -101,6 +101,10 @@ export declare class LeadsController {
                 type: import(".prisma/client").$Enums.PropertyType;
                 status: import(".prisma/client").$Enums.PropertyStatus;
                 companyId: string | null;
+                cloudbedsWidgetPropertyId: string | null;
+                cloudbedsBookingSlug: string | null;
+                defaultCurrency: string;
+                defaultLanguage: string;
             };
         } & {
             id: string;
@@ -117,6 +121,8 @@ export declare class LeadsController {
             maxOccupancy: number;
             sizeM2: import("@prisma/client/runtime/library").Decimal | null;
             rentalModality: import(".prisma/client").$Enums.RentalModality | null;
+            cloudbedsRoomTypeId: string | null;
+            cloudbedsUnitId: string | null;
         }) | null;
         booking: {
             id: string;

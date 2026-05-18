@@ -27,6 +27,8 @@ export declare class UnitsController {
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
+        cloudbedsRoomTypeId: string | null;
+        cloudbedsUnitId: string | null;
     }>;
     findAll(page?: number, limit?: number, propertyId?: string, status?: UnitStatus, rentalModality?: RentalModality): Promise<{
         items: ({
@@ -90,6 +92,8 @@ export declare class UnitsController {
             maxOccupancy: number;
             sizeM2: import("@prisma/client/runtime/library").Decimal | null;
             rentalModality: import(".prisma/client").$Enums.RentalModality | null;
+            cloudbedsRoomTypeId: string | null;
+            cloudbedsUnitId: string | null;
         })[];
         total: number;
         page: number;
@@ -123,6 +127,10 @@ export declare class UnitsController {
             type: import(".prisma/client").$Enums.PropertyType;
             status: import(".prisma/client").$Enums.PropertyStatus;
             companyId: string | null;
+            cloudbedsWidgetPropertyId: string | null;
+            cloudbedsBookingSlug: string | null;
+            defaultCurrency: string;
+            defaultLanguage: string;
         };
         unitImages: ({
             mediaFile: {
@@ -192,6 +200,8 @@ export declare class UnitsController {
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
+        cloudbedsRoomTypeId: string | null;
+        cloudbedsUnitId: string | null;
     }>;
     update(id: string, dto: UpdateUnitDto): Promise<{
         id: string;
@@ -208,6 +218,8 @@ export declare class UnitsController {
         maxOccupancy: number;
         sizeM2: import("@prisma/client/runtime/library").Decimal | null;
         rentalModality: import(".prisma/client").$Enums.RentalModality | null;
+        cloudbedsRoomTypeId: string | null;
+        cloudbedsUnitId: string | null;
     }>;
     remove(id: string): Promise<void>;
     getAvailability(id: string, from?: string, to?: string): Promise<{

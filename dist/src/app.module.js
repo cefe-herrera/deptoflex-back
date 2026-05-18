@@ -37,6 +37,7 @@ const r2_module_1 = require("./modules/r2/r2.module");
 const health_module_1 = require("./modules/health/health.module");
 const admin_module_1 = require("./modules/admin/admin.module");
 const notifications_module_1 = require("./modules/notifications/notifications.module");
+const cloudbeds_module_1 = require("./modules/cloudbeds/cloudbeds.module");
 const jwt_auth_guard_1 = require("./common/guards/jwt-auth.guard");
 const roles_guard_1 = require("./common/guards/roles.guard");
 let AppModule = class AppModule {
@@ -72,6 +73,7 @@ exports.AppModule = AppModule = __decorate([
             health_module_1.HealthModule,
             admin_module_1.AdminModule,
             notifications_module_1.NotificationsModule,
+            cloudbeds_module_1.CloudbedsModule,
         ],
         providers: [
             { provide: core_1.APP_GUARD, useClass: jwt_auth_guard_1.JwtAuthGuard },

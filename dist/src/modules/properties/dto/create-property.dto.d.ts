@@ -17,5 +17,9 @@ export declare class CreatePropertyDto {
     description?: string;
     type: PropertyType;
     status?: PropertyStatus;
+    cloudbedsWidgetPropertyId?: string;
+    cloudbedsBookingSlug?: string;
+    defaultCurrency?: string;
+    defaultLanguage?: string;
     address?: CreatePropertyAddressDto;
 }

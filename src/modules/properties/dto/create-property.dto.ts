@@ -29,6 +29,12 @@ export class CreatePropertyDto {
   @IsEnum(PropertyType) type: PropertyType;
   @IsOptional() @IsEnum(PropertyStatus) status?: PropertyStatus;
 
+  // Cloudbeds public booking-engine integration (optional)
+  @IsOptional() @IsString() @MaxLength(50) cloudbedsWidgetPropertyId?: string;
+  @IsOptional() @IsString() @MaxLength(100) cloudbedsBookingSlug?: string;
+  @IsOptional() @IsString() @MaxLength(3) defaultCurrency?: string;
+  @IsOptional() @IsString() @MaxLength(5) defaultLanguage?: string;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => CreatePropertyAddressDto)

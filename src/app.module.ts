@@ -25,6 +25,7 @@ import { R2Module } from './modules/r2/r2.module';
 import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { CloudbedsModule } from './modules/cloudbeds/cloudbeds.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -57,6 +58,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     HealthModule,
     AdminModule,
     NotificationsModule,
+    CloudbedsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

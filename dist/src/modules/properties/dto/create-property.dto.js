@@ -95,9 +95,13 @@ class CreatePropertyDto {
     description;
     type;
     status;
+    cloudbedsWidgetPropertyId;
+    cloudbedsBookingSlug;
+    defaultCurrency;
+    defaultLanguage;
     address;
     static _OPENAPI_METADATA_FACTORY() {
-        return { companyId: { required: false, type: () => String, format: "uuid" }, name: { required: true, type: () => String, maxLength: 200 }, description: { required: false, type: () => String }, type: { required: true, type: () => Object }, status: { required: false, type: () => Object }, address: { required: false, type: () => require("./create-property.dto").CreatePropertyAddressDto } };
+        return { companyId: { required: false, type: () => String, format: "uuid" }, name: { required: true, type: () => String, maxLength: 200 }, description: { required: false, type: () => String }, type: { required: true, type: () => Object }, status: { required: false, type: () => Object }, cloudbedsWidgetPropertyId: { required: false, type: () => String, maxLength: 50 }, cloudbedsBookingSlug: { required: false, type: () => String, maxLength: 100 }, defaultCurrency: { required: false, type: () => String, maxLength: 3 }, defaultLanguage: { required: false, type: () => String, maxLength: 5 }, address: { required: false, type: () => require("./create-property.dto").CreatePropertyAddressDto } };
     }
 }
 exports.CreatePropertyDto = CreatePropertyDto;
@@ -126,6 +130,30 @@ __decorate([
     (0, class_validator_1.IsEnum)(client_1.PropertyStatus),
     __metadata("design:type", String)
 ], CreatePropertyDto.prototype, "status", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(50),
+    __metadata("design:type", String)
+], CreatePropertyDto.prototype, "cloudbedsWidgetPropertyId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(100),
+    __metadata("design:type", String)
+], CreatePropertyDto.prototype, "cloudbedsBookingSlug", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(3),
+    __metadata("design:type", String)
+], CreatePropertyDto.prototype, "defaultCurrency", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(5),
+    __metadata("design:type", String)
+], CreatePropertyDto.prototype, "defaultLanguage", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.ValidateNested)(),

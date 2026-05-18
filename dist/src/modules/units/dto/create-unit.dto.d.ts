@@ -10,4 +10,6 @@ export declare class CreateUnitDto {
     sizeM2?: string;
     status?: UnitStatus;
     rentalModality?: RentalModality;
+    cloudbedsRoomTypeId?: string;
+    cloudbedsUnitId?: string;
 }

@@ -286,15 +286,24 @@ model Property {
   description String?        @db.Text
   type        PropertyType
   status      PropertyStatus @default(DRAFT)
-  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz
 
-  company           CompanyProfile?   @relation(fields: [companyId], references: [id])
-  address           PropertyAddress?
-  units             Unit[]
-  propertyImages    PropertyImage[]
-  propertyAmenities PropertyAmenity[]
+  // Cloudbeds integration (read-only public booking engine)
+  cloudbedsWidgetPropertyId String? @unique @map("cloudbeds_widget_property_id") @db.VarChar(50)
+  cloudbedsBookingSlug      String? @map("cloudbeds_booking_slug") @db.VarChar(100)
+  defaultCurrency           String  @default("ARS") @map("default_currency") @db.VarChar(3)
+  defaultLanguage           String  @default("es") @map("default_language") @db.VarChar(5)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  company              CompanyProfile?       @relation(fields: [companyId], references: [id])
+  address              PropertyAddress?
+  units                Unit[]
+  propertyImages       PropertyImage[]
+  propertyAmenities    PropertyAmenity[]
+  availabilitySnapshots AvailabilitySnapshot[]
+  reservationIntents    ReservationIntent[]
 
   @@index([status])
   @@index([companyId])
@@ -335,6 +344,11 @@ model Unit {
   sizeM2       Decimal?   @map("size_m2") @db.Decimal(8, 2)
   status          UnitStatus      @default(DRAFT)
   rentalModality  RentalModality? @map("rental_modality")
+
+  // Cloudbeds mapping
+  cloudbedsRoomTypeId String? @map("cloudbeds_room_type_id") @db.VarChar(50)
+  cloudbedsUnitId     String? @unique @map("cloudbeds_unit_id") @db.VarChar(50)
+
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz
@@ -351,6 +365,7 @@ model Unit {
   @@index([status])
   @@index([rentalModality])
   @@index([deletedAt])
+  @@index([cloudbedsRoomTypeId])
   @@map("units")
 }
 
@@ -717,4 +732,64 @@ model DeviceToken {
   @@unique([userId, token])
   @@index([userId])
   @@map("device_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLOUDBEDS INTEGRATION (public booking engine — read-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ReservationIntentStatus {
+  PENDING
+  REDIRECTED
+  EXPIRED
+}
+
+model AvailabilitySnapshot {
+  id                    String   @id @default(uuid()) @db.Uuid
+  propertyId            String   @map("property_id") @db.Uuid
+  checkin               DateTime @db.Date
+  checkout              DateTime @db.Date
+  currencyCode          String   @map("currency_code") @db.VarChar(3)
+  lang                  String   @db.VarChar(5)
+  rawResponseJson       Json     @map("raw_response_json") @db.JsonB
+  normalizedResponseJson Json    @map("normalized_response_json") @db.JsonB
+  totalAvailable        Int      @default(0) @map("total_available")
+  httpStatus            Int?     @map("http_status")
+  durationMs            Int?     @map("duration_ms")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, checkin, checkout])
+  @@index([createdAt])
+  @@map("availability_snapshots")
+}
+
+model ReservationIntent {
+  id           String                  @id @default(uuid()) @db.Uuid
+  propertyId   String                  @map("property_id") @db.Uuid
+  roomTypeId   String                  @map("room_type_id") @db.VarChar(50)
+  rateId       String?                 @map("rate_id") @db.VarChar(50)
+  checkin      DateTime                @db.Date
+  checkout     DateTime                @db.Date
+  adults       Int                     @default(1) @db.SmallInt
+  children     Int                     @default(0) @db.SmallInt
+  totalAmount  Decimal?                @map("total_amount") @db.Decimal(12, 2)
+  currencyCode String                  @map("currency_code") @db.VarChar(3)
+  redirectUrl  String                  @map("redirect_url") @db.Text
+  status       ReservationIntentStatus @default(PENDING)
+  userId       String?                 @map("user_id") @db.Uuid
+  ipAddress    String?                 @map("ip_address") @db.VarChar(45)
+  userAgent    String?                 @map("user_agent") @db.VarChar(500)
+  expiresAt    DateTime                @map("expires_at") @db.Timestamptz
+  redirectedAt DateTime?               @map("redirected_at") @db.Timestamptz
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("reservation_intents")
 }
