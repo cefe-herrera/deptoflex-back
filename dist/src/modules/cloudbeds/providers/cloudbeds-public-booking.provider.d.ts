@@ -1,13 +1,15 @@
-import { AvailabilityResult, BookingProvider, ReservationRedirectInput, SearchAvailabilityInput } from './booking-provider.interface';
+import { AvailabilityResult, BookingProvider, CalculateTotalsInput, CalculateTotalsResult, ReservationRedirectInput, SearchAvailabilityInput } from './booking-provider.interface';
 import { type RawCloudbedsResponse } from './cloudbeds-response.schema';
 export declare class CloudbedsPublicBookingProvider implements BookingProvider {
     readonly providerName = "cloudbeds-public";
     private readonly logger;
     private readonly endpoint;
+    private readonly totalsEndpoint;
     private readonly reservationBaseUrl;
     private readonly userAgent;
     private readonly timeoutMs;
     searchAvailability(input: SearchAvailabilityInput): Promise<AvailabilityResult>;
+    calculateTotals(input: CalculateTotalsInput): Promise<CalculateTotalsResult>;
     private httpPost;
     buildReservationRedirectUrl(input: ReservationRedirectInput): string;
     buildFormBody(input: SearchAvailabilityInput): string;
@@ -15,4 +17,8 @@ export declare class CloudbedsPublicBookingProvider implements BookingProvider {
     private normalizeRoom;
     private findOtaComparison;
     private toNumber;
+    buildTotalsFormBody(input: CalculateTotalsInput): string;
+    private normalizeTotals;
+    private normalizeTaxFeeGroup;
+    private numberOr;
 }

@@ -13,6 +13,7 @@ const futureDate = (offsetDays: number): string => {
 const fakeProvider = (): jest.Mocked<BookingProvider> => ({
   providerName: 'fake',
   searchAvailability: jest.fn(),
+  calculateTotals: jest.fn(),
   buildReservationRedirectUrl: jest.fn(),
 });
 

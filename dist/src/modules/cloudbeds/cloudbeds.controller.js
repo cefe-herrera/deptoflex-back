@@ -23,6 +23,7 @@ const cloudbeds_service_1 = require("./cloudbeds.service");
 const reservation_intents_service_1 = require("./reservation-intents.service");
 const search_availability_dto_1 = require("./dto/search-availability.dto");
 const create_reservation_intent_dto_1 = require("./dto/create-reservation-intent.dto");
+const calculate_totals_dto_1 = require("./dto/calculate-totals.dto");
 let CloudbedsController = class CloudbedsController {
     cloudbeds;
     intents;
@@ -32,6 +33,9 @@ let CloudbedsController = class CloudbedsController {
     }
     searchAvailability(dto) {
         return this.cloudbeds.searchAvailability(dto);
+    }
+    calculateTotals(dto) {
+        return this.cloudbeds.calculateTotals(dto);
     }
     createReservationIntent(dto, req, user) {
         return this.intents.create(dto, {
@@ -63,6 +67,21 @@ __decorate([
     __metadata("design:paramtypes", [search_availability_dto_1.SearchAvailabilityDto]),
     __metadata("design:returntype", void 0)
 ], CloudbedsController.prototype, "searchAvailability", null);
+__decorate([
+    (0, public_decorator_1.Public)(),
+    (0, throttler_1.Throttle)({ booking: { limit: 30, ttl: 60_000 } }),
+    (0, common_1.Post)('booking/calculate-totals'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, swagger_1.ApiOperation)({
+        summary: 'Calcular totales (impuestos, fees, grandTotal) y obtener cartToken',
+        description: 'Llama al endpoint `calculateTotals` del motor público de Cloudbeds para una selección de tarifas. Devuelve el desglose de impuestos y fees, el subtotal, el grandTotal y el `cartToken` opaco que se usará en pasos posteriores del flujo de reserva. Solo lectura. Rate-limited a 30 req/min.',
+    }),
+    openapi.ApiResponse({ status: common_1.HttpStatus.OK, type: Object }),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [calculate_totals_dto_1.CalculateTotalsDto]),
+    __metadata("design:returntype", void 0)
+], CloudbedsController.prototype, "calculateTotals", null);
 __decorate([
     (0, public_decorator_1.Public)(),
     (0, throttler_1.Throttle)({ booking: { limit: 10, ttl: 60_000 } }),

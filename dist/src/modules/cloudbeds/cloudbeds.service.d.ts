@@ -1,7 +1,8 @@
 import { PrismaService } from '../prisma/prisma.service';
 import { AvailabilitySnapshotsService } from './availability-snapshots.service';
 import { SearchAvailabilityDto } from './dto/search-availability.dto';
-import { type AvailableRoom, type BookingProvider } from './providers/booking-provider.interface';
+import { type AvailableRoom, type BookingProvider, type CalculateTotalsResult } from './providers/booking-provider.interface';
+import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 export interface EnrichedRoom extends AvailableRoom {
     localUnits: Array<{
         id: string;
@@ -31,6 +32,7 @@ export declare class CloudbedsService {
     private readonly logger;
     constructor(prisma: PrismaService, snapshots: AvailabilitySnapshotsService, provider: BookingProvider);
     searchAvailability(dto: SearchAvailabilityDto): Promise<EnrichedAvailabilityResult>;
+    calculateTotals(dto: CalculateTotalsDto): Promise<CalculateTotalsResult>;
     private enrichWithLocalUnits;
     private assertDatesValid;
 }

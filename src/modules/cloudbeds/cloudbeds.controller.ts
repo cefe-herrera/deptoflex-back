@@ -19,6 +19,7 @@ import { CloudbedsService } from './cloudbeds.service';
 import { ReservationIntentsService } from './reservation-intents.service';
 import { SearchAvailabilityDto } from './dto/search-availability.dto';
 import { CreateReservationIntentDto } from './dto/create-reservation-intent.dto';
+import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 
 @ApiTags('Booking (Cloudbeds)')
 @ApiBearerAuth('access-token')
@@ -41,6 +42,19 @@ export class CloudbedsController {
   })
   searchAvailability(@Body() dto: SearchAvailabilityDto) {
     return this.cloudbeds.searchAvailability(dto);
+  }
+
+  @Public()
+  @Throttle({ booking: { limit: 30, ttl: 60_000 } })
+  @Post('booking/calculate-totals')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Calcular totales (impuestos, fees, grandTotal) y obtener cartToken',
+    description:
+      'Llama al endpoint `calculateTotals` del motor público de Cloudbeds para una selección de tarifas. Devuelve el desglose de impuestos y fees, el subtotal, el grandTotal y el `cartToken` opaco que se usará en pasos posteriores del flujo de reserva. Solo lectura. Rate-limited a 30 req/min.',
+  })
+  calculateTotals(@Body() dto: CalculateTotalsDto) {
+    return this.cloudbeds.calculateTotals(dto);
   }
 
   @Public()
