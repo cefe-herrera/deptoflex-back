@@ -38,8 +38,8 @@ export declare class ReservationIntentsService {
         checkin: Date;
         checkout: Date;
         currencyCode: string;
-        roomTypeId: string;
         rateId: string | null;
+        roomTypeId: string;
         redirectUrl: string;
         redirectedAt: Date | null;
     }>;

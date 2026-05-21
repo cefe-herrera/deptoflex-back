@@ -13,13 +13,33 @@ import { z } from 'zod';
  * `ServiceUnavailableException`).
  */
 
-const DetailedRateSchema = z.object({
-  date: z.string(),
-  rate: z.number(),
-  base_rate: z.number().optional().nullable(),
+const StringOrNumber = z.union([z.string(), z.number()]);
+
+/**
+ * Cloudbeds returns numeric fields sometimes as `number` and sometimes as
+ * stringified numbers (e.g. `"60000.00"` for `base_rate` on package rates).
+ * Coerce both into a finite number; rejects non-numeric strings.
+ */
+const NumericStrict = StringOrNumber.transform((v, ctx) => {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n)) {
+    ctx.addIssue({ code: 'custom', message: 'Expected numeric value' });
+    return z.NEVER;
+  }
+  return n;
 });
 
-const StringOrNumber = z.union([z.string(), z.number()]);
+/** Same as NumericStrict but allows null/undefined and coerces invalid to null. */
+const NumericLoose = StringOrNumber.transform((v) => {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+});
+
+const DetailedRateSchema = z.object({
+  date: z.string(),
+  rate: NumericStrict,
+  base_rate: NumericLoose.optional().nullable(),
+});
 
 const RoomTypeSchema = z.object({
   room_type_id: StringOrNumber,
@@ -56,12 +76,21 @@ const MaRateSchema = z.object({
   direct: z.number().optional().nullable(),
 });
 
+/**
+ * Cloudbeds returns `ma_rates: false` when OTA comparison is unavailable,
+ * and an array otherwise. Normalize both to an array.
+ */
+const MaRatesField = z
+  .union([z.array(MaRateSchema), z.boolean()])
+  .optional()
+  .transform((v) => (Array.isArray(v) ? v : []));
+
 export const CloudbedsResponseSchema = z.object({
   total: z.number().optional(),
   room_types: z.array(RoomTypeSchema).optional(),
   currency_rate: z.number().optional().nullable(),
   website_source_id: StringOrNumber.optional().nullable(),
-  ma_rates: z.array(MaRateSchema).optional(),
+  ma_rates: MaRatesField,
 });
 
 export type RawDetailedRate = z.infer<typeof DetailedRateSchema>;

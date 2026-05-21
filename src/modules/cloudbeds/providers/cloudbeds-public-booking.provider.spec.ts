@@ -133,7 +133,7 @@ describe('CloudbedsPublicBookingProvider', () => {
     });
 
     it('handles a response with no room_types', () => {
-      const result = provider.normalize(baseInput, { total: 0 }, 200, 50);
+      const result = provider.normalize(baseInput, { total: 0, ma_rates: [] }, 200, 50);
       expect(result.totalAvailable).toBe(0);
       expect(result.rooms).toEqual([]);
     });
@@ -150,6 +150,7 @@ describe('CloudbedsPublicBookingProvider', () => {
             detailed_rates: [{ date: '2026-05-16', rate: 100 }],
           },
         ],
+        ma_rates: [],
       };
       const result = provider.normalize(baseInput, payload, 200, 10);
       expect(result.rooms[0].photos).toEqual([]);
@@ -164,6 +165,7 @@ describe('CloudbedsPublicBookingProvider', () => {
         room_types: [
           { room_type_id: '1', room_type_name: 'X', remaining: 1 },
         ],
+        ma_rates: [],
       };
       const result = provider.normalize(baseInput, payload, 200, 10);
       expect(result.rooms[0].totalAmount).toBeNull();
@@ -174,6 +176,7 @@ describe('CloudbedsPublicBookingProvider', () => {
         room_types: [
           { room_type_id: '1', room_type_name: 'X', num_available_now: 7 },
         ],
+        ma_rates: [],
       };
       const result = provider.normalize(baseInput, payload, 200, 10);
       expect(result.rooms[0].remaining).toBe(7);

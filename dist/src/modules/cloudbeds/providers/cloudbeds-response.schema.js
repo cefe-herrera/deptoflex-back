@@ -2,12 +2,24 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CloudbedsResponseSchema = void 0;
 const zod_1 = require("zod");
+const StringOrNumber = zod_1.z.union([zod_1.z.string(), zod_1.z.number()]);
+const NumericStrict = StringOrNumber.transform((v, ctx) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    if (!Number.isFinite(n)) {
+        ctx.addIssue({ code: 'custom', message: 'Expected numeric value' });
+        return zod_1.z.NEVER;
+    }
+    return n;
+});
+const NumericLoose = StringOrNumber.transform((v) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+});
 const DetailedRateSchema = zod_1.z.object({
     date: zod_1.z.string(),
-    rate: zod_1.z.number(),
-    base_rate: zod_1.z.number().optional().nullable(),
+    rate: NumericStrict,
+    base_rate: NumericLoose.optional().nullable(),
 });
-const StringOrNumber = zod_1.z.union([zod_1.z.string(), zod_1.z.number()]);
 const RoomTypeSchema = zod_1.z.object({
     room_type_id: StringOrNumber,
     rate_id: StringOrNumber.optional().nullable(),
@@ -40,11 +52,15 @@ const MaRateSchema = zod_1.z.object({
     rates: zod_1.z.array(MaRateChannelSchema).optional(),
     direct: zod_1.z.number().optional().nullable(),
 });
+const MaRatesField = zod_1.z
+    .union([zod_1.z.array(MaRateSchema), zod_1.z.boolean()])
+    .optional()
+    .transform((v) => (Array.isArray(v) ? v : []));
 exports.CloudbedsResponseSchema = zod_1.z.object({
     total: zod_1.z.number().optional(),
     room_types: zod_1.z.array(RoomTypeSchema).optional(),
     currency_rate: zod_1.z.number().optional().nullable(),
     website_source_id: StringOrNumber.optional().nullable(),
-    ma_rates: zod_1.z.array(MaRateSchema).optional(),
+    ma_rates: MaRatesField,
 });
 //# sourceMappingURL=cloudbeds-response.schema.js.map

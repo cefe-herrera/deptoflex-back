@@ -45,10 +45,13 @@ const common_1 = require("@nestjs/common");
 const https = __importStar(require("node:https"));
 const node_url_1 = require("node:url");
 const cloudbeds_response_schema_1 = require("./cloudbeds-response.schema");
+const cloudbeds_totals_schema_1 = require("./cloudbeds-totals.schema");
 let CloudbedsPublicBookingProvider = CloudbedsPublicBookingProvider_1 = class CloudbedsPublicBookingProvider {
     providerName = 'cloudbeds-public';
     logger = new common_1.Logger(CloudbedsPublicBookingProvider_1.name);
     endpoint = process.env.CLOUDBEDS_BOOKING_ROOMS_URL ?? 'https://hotels.cloudbeds.com/booking/rooms';
+    totalsEndpoint = process.env.CLOUDBEDS_BOOKING_TOTALS_URL ??
+        'https://hotels.cloudbeds.com/booking/calculateTotals';
     reservationBaseUrl = process.env.CLOUDBEDS_RESERVATION_BASE_URL ?? 'https://hotels.cloudbeds.com';
     userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
     timeoutMs = Number(process.env.CLOUDBEDS_HTTP_TIMEOUT_MS ?? 10_000);
@@ -93,6 +96,55 @@ let CloudbedsPublicBookingProvider = CloudbedsPublicBookingProvider_1 = class Cl
                 throw new common_1.ServiceUnavailableException('Booking engine timeout');
             }
             this.logger.error(`Cloudbeds request failed: ${err instanceof Error ? err.message : String(err)}`);
+            throw new common_1.ServiceUnavailableException('Booking engine unreachable');
+        }
+    }
+    async calculateTotals(input) {
+        this.logger.log('calculateTotals');
+        const body = this.buildTotalsFormBody(input);
+        const startedAt = Date.now();
+        let httpStatus = 0;
+        let rawText = '';
+        try {
+            this.logger.log(`httpPost endpoint=${this.totalsEndpoint} body=${body}`);
+            const { status, text } = await this.httpPost(this.totalsEndpoint, body);
+            this.logger.log(`httpPost status=${status} text=${text.slice(0, 1000)}`);
+            httpStatus = status;
+            rawText = text;
+            if (status < 200 || status >= 300) {
+                this.logger.warn(`Cloudbeds totals returned non-OK status ${httpStatus} for property=${input.propertyExternalId} body="${rawText.slice(0, 500).replace(/\s+/g, ' ')}"`);
+                throw new common_1.ServiceUnavailableException('Booking engine upstream error');
+            }
+            let json;
+            try {
+                json = JSON.parse(rawText);
+            }
+            catch {
+                this.logger.error('Cloudbeds totals returned non-JSON body');
+                throw new common_1.ServiceUnavailableException('Booking engine returned invalid response');
+            }
+            const parseResult = cloudbeds_totals_schema_1.CloudbedsTotalsResponseSchema.safeParse(json);
+            if (!parseResult.success) {
+                this.logger.error(`Cloudbeds totals response failed schema validation: ${parseResult.error.message}`);
+                throw new common_1.ServiceUnavailableException('Booking engine returned unexpected payload');
+            }
+            const parsed = parseResult.data;
+            if (parsed.success === false || !parsed.data) {
+                this.logger.warn(`Cloudbeds totals returned success=false: ${parsed.statusMessage ?? 'unknown'}`);
+                throw new common_1.ServiceUnavailableException(parsed.statusMessage ?? 'Booking engine rejected the totals request');
+            }
+            const durationMs = Date.now() - startedAt;
+            return this.normalizeTotals(input, parsed.data, httpStatus, durationMs);
+        }
+        catch (err) {
+            const durationMs = Date.now() - startedAt;
+            if (err instanceof common_1.ServiceUnavailableException)
+                throw err;
+            if (err instanceof Error && err.name === 'AbortError') {
+                this.logger.error(`Cloudbeds totals request timed out after ${durationMs}ms`);
+                throw new common_1.ServiceUnavailableException('Booking engine timeout');
+            }
+            this.logger.error(`Cloudbeds totals request failed: ${err instanceof Error ? err.message : String(err)}`);
             throw new common_1.ServiceUnavailableException('Booking engine unreachable');
         }
     }
@@ -255,6 +307,74 @@ let CloudbedsPublicBookingProvider = CloudbedsPublicBookingProvider_1 = class Cl
             return null;
         const n = typeof value === 'number' ? value : Number(value);
         return Number.isFinite(n) ? n : null;
+    }
+    buildTotalsFormBody(input) {
+        const ratesPayload = input.rates.map((r) => ({
+            addons: r.addons ?? [],
+            adults: r.adults,
+            kids: r.kids,
+            rateId: r.rateId,
+        }));
+        const params = new URLSearchParams();
+        params.set('lang', input.lang);
+        params.set('data[checkIn]', input.checkin);
+        params.set('data[checkOut]', input.checkout);
+        params.set('data[currency]', input.currencyCode);
+        params.set('data[rates]', JSON.stringify(ratesPayload));
+        params.set('property_id', input.propertyExternalId);
+        return params.toString();
+    }
+    normalizeTotals(input, data, httpStatus, durationMs) {
+        const rooms = (data.rooms ?? []).map((r) => ({
+            name: r.name ?? '',
+            rateId: r.rateId != null ? String(r.rateId) : null,
+            adults: this.numberOr(r.adults, 0),
+            kids: this.numberOr(r.kids, 0),
+            count: this.numberOr(r.count, 1),
+            isPrivate: Boolean(r.isPrivate),
+            rateWithoutInclusiveTaxAndFees: typeof r.rateWithoutInclusiveTaxAndFees === 'number'
+                ? r.rateWithoutInclusiveTaxAndFees
+                : null,
+        }));
+        return {
+            propertyExternalId: input.propertyExternalId,
+            checkin: data.checkIn ?? input.checkin,
+            checkout: data.checkOut ?? input.checkout,
+            currencyCode: input.currencyCode,
+            days: this.numberOr(data.days, 0),
+            rooms,
+            subtotal: this.numberOr(data.total, 0),
+            taxesTotal: this.numberOr(data.taxes?.total, 0),
+            feesTotal: this.numberOr(data.fees?.total, 0),
+            deposit: this.numberOr(data.deposit, 0),
+            grandTotal: this.numberOr(data.grandTotal, 0),
+            totalAdults: this.numberOr(data.totalAdults, 0),
+            totalKids: this.numberOr(data.totalKids, 0),
+            totalGuests: this.numberOr(data.totalGuests, 0),
+            cntRooms: this.numberOr(data.cntRooms, 0),
+            taxes: this.normalizeTaxFeeGroup(data.taxes),
+            fees: this.normalizeTaxFeeGroup(data.fees),
+            cartToken: data.cart_token ?? null,
+            currencyRate: typeof data.currencyRate === 'number' ? data.currencyRate : null,
+            raw: data,
+            httpStatus,
+            durationMs,
+        };
+    }
+    normalizeTaxFeeGroup(group) {
+        if (!group?.data)
+            return [];
+        return group.data.map((item) => ({
+            id: item.id != null ? String(item.id) : null,
+            name: item.name ?? '',
+            amount: this.numberOr(item.credit, 0),
+        }));
+    }
+    numberOr(value, fallback) {
+        if (value === null || value === undefined)
+            return fallback;
+        const n = typeof value === 'number' ? value : Number(value);
+        return Number.isFinite(n) ? n : fallback;
     }
 };
 exports.CloudbedsPublicBookingProvider = CloudbedsPublicBookingProvider;

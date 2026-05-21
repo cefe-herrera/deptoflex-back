@@ -1,8 +1,8 @@
 import { z } from 'zod';
 declare const DetailedRateSchema: z.ZodObject<{
     date: z.ZodString;
-    rate: z.ZodNumber;
-    base_rate: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+    rate: z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>;
+    base_rate: z.ZodNullable<z.ZodOptional<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number | null, string | number>>>>;
 }, z.core.$strip>;
 declare const RoomTypeSchema: z.ZodObject<{
     room_type_id: z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>;
@@ -15,8 +15,8 @@ declare const RoomTypeSchema: z.ZodObject<{
     rate_max: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     detailed_rates: z.ZodOptional<z.ZodArray<z.ZodObject<{
         date: z.ZodString;
-        rate: z.ZodNumber;
-        base_rate: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+        rate: z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>;
+        base_rate: z.ZodNullable<z.ZodOptional<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number | null, string | number>>>>;
     }, z.core.$strip>>>;
     num_available_now: z.ZodOptional<z.ZodNumber>;
     remaining: z.ZodOptional<z.ZodNumber>;
@@ -56,8 +56,8 @@ export declare const CloudbedsResponseSchema: z.ZodObject<{
         rate_max: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
         detailed_rates: z.ZodOptional<z.ZodArray<z.ZodObject<{
             date: z.ZodString;
-            rate: z.ZodNumber;
-            base_rate: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+            rate: z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>;
+            base_rate: z.ZodNullable<z.ZodOptional<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number | null, string | number>>>>;
         }, z.core.$strip>>>;
         num_available_now: z.ZodOptional<z.ZodNumber>;
         remaining: z.ZodOptional<z.ZodNumber>;
@@ -73,7 +73,7 @@ export declare const CloudbedsResponseSchema: z.ZodObject<{
     }, z.core.$strip>>>;
     currency_rate: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     website_source_id: z.ZodNullable<z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>>>;
-    ma_rates: z.ZodOptional<z.ZodArray<z.ZodObject<{
+    ma_rates: z.ZodPipe<z.ZodOptional<z.ZodUnion<readonly [z.ZodArray<z.ZodObject<{
         id: z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>;
         name: z.ZodString;
         rates: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -81,7 +81,23 @@ export declare const CloudbedsResponseSchema: z.ZodObject<{
             channel_price: z.ZodNumber;
         }, z.core.$strip>>>;
         direct: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
-    }, z.core.$strip>>>;
+    }, z.core.$strip>>, z.ZodBoolean]>>, z.ZodTransform<{
+        id: string | number;
+        name: string;
+        rates?: {
+            channel_name: string;
+            channel_price: number;
+        }[] | undefined;
+        direct?: number | null | undefined;
+    }[], boolean | {
+        id: string | number;
+        name: string;
+        rates?: {
+            channel_name: string;
+            channel_price: number;
+        }[] | undefined;
+        direct?: number | null | undefined;
+    }[] | undefined>>;
 }, z.core.$strip>;
 export type RawDetailedRate = z.infer<typeof DetailedRateSchema>;
 export type RawRoomType = z.infer<typeof RoomTypeSchema>;

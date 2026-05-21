@@ -75,6 +75,32 @@ let CloudbedsService = CloudbedsService_1 = class CloudbedsService {
             meta: result.meta,
         };
     }
+    async calculateTotals(dto) {
+        const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
+        const lang = (dto.lang ?? 'es').toLowerCase();
+        this.assertDatesValid(dto.checkin, dto.checkout);
+        const property = await this.prisma.property.findFirst({
+            where: { cloudbedsWidgetPropertyId: dto.propertyId, deletedAt: null },
+        });
+        if (!property)
+            throw new common_1.NotFoundException('Property not found');
+        if (!property.cloudbedsWidgetPropertyId) {
+            throw new common_1.BadRequestException('Property has no Cloudbeds widget_property mapping');
+        }
+        this.logger.log(`Calculating totals for property ${property.id}`);
+        return this.provider.calculateTotals({
+            propertyExternalId: property.cloudbedsWidgetPropertyId,
+            checkin: dto.checkin,
+            checkout: dto.checkout,
+            currencyCode,
+            lang,
+            rates: dto.rates.map((r) => ({
+                rateId: r.rateId,
+                adults: r.adults,
+                kids: r.kids ?? 0,
+            })),
+        });
+    }
     async enrichWithLocalUnits(propertyId, rooms) {
         const reservableRooms = rooms.filter((r) => r.remaining > 0);
         const roomTypeIds = reservableRooms.map((r) => r.roomTypeId);

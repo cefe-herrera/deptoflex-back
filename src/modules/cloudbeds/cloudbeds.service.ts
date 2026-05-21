@@ -13,7 +13,9 @@ import {
   type AvailabilityResult,
   type AvailableRoom,
   type BookingProvider,
+  type CalculateTotalsResult,
 } from './providers/booking-provider.interface';
+import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 
 export interface EnrichedRoom extends AvailableRoom {
   /** Local Units that match this Cloudbeds room_type. */
@@ -106,6 +108,41 @@ export class CloudbedsService {
       rooms: enrichedRooms,
       meta: result.meta,
     };
+  }
+
+  /**
+   * Price a selection of rates via Cloudbeds' `calculateTotals` endpoint.
+   * Returns taxes/fees breakdown, grand total and the `cartToken` required
+   * by downstream booking steps.
+   */
+  async calculateTotals(dto: CalculateTotalsDto): Promise<CalculateTotalsResult> {
+    const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
+    const lang = (dto.lang ?? 'es').toLowerCase();
+
+    this.assertDatesValid(dto.checkin, dto.checkout);
+
+    const property = await this.prisma.property.findFirst({
+      where: { cloudbedsWidgetPropertyId: dto.propertyId, deletedAt: null },
+    });
+    if (!property) throw new NotFoundException('Property not found');
+    if (!property.cloudbedsWidgetPropertyId) {
+      throw new BadRequestException('Property has no Cloudbeds widget_property mapping');
+    }
+
+    this.logger.log(`Calculating totals for property ${property.id}`);
+
+    return this.provider.calculateTotals({
+      propertyExternalId: property.cloudbedsWidgetPropertyId,
+      checkin: dto.checkin,
+      checkout: dto.checkout,
+      currencyCode,
+      lang,
+      rates: dto.rates.map((r) => ({
+        rateId: r.rateId,
+        adults: r.adults,
+        kids: r.kids ?? 0,
+      })),
+    });
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────
