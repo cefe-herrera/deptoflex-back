@@ -9,6 +9,8 @@ import {
   CalculateTotalsResult,
   NightlyRate,
   OtaRateComparison,
+  PrepareBookingInput,
+  PrepareBookingResult,
   ReservationRedirectInput,
   SearchAvailabilityInput,
   TotalsRoomBreakdown,
@@ -25,6 +27,10 @@ import {
   type RawTaxFeeGroup,
   type RawTotalsData,
 } from './cloudbeds-totals.schema';
+import {
+  CloudbedsPrepareResponseSchema,
+  type RawCloudbedsPrepareResponse,
+} from './cloudbeds-prepare.schema';
 
 /**
  * Public Cloudbeds Booking Engine provider — read-only.
@@ -55,6 +61,11 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   private readonly totalsEndpoint =
     process.env.CLOUDBEDS_BOOKING_TOTALS_URL ??
     'https://hotels.cloudbeds.com/booking/calculateTotals';
+
+  /** Prepare endpoint can be overridden via env CLOUDBEDS_BOOKING_PREPARE_URL. */
+  private readonly prepareEndpoint =
+    process.env.CLOUDBEDS_BOOKING_PREPARE_URL ??
+    'https://hotels.cloudbeds.com/booking/prepare';
 
   /** Base URL for the official reservation page (where users are redirected). */
   private readonly reservationBaseUrl =
@@ -177,6 +188,69 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       }
       this.logger.error(
         `Cloudbeds totals request failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new ServiceUnavailableException('Booking engine unreachable');
+    }
+  }
+
+  async prepareBooking(input: PrepareBookingInput): Promise<PrepareBookingResult> {
+    this.logger.log('prepareBooking');
+    const body = this.buildPrepareFormBody(input);
+    const startedAt = Date.now();
+
+    let httpStatus = 0;
+    let rawText = '';
+    try {
+      this.logger.log(`httpPost endpoint=${this.prepareEndpoint}`);
+      const { status, text } = await this.httpPost(this.prepareEndpoint, body);
+      this.logger.log(`httpPost status=${status} text=${text.slice(0, 1000)}`);
+      httpStatus = status;
+      rawText = text;
+
+      if (status < 200 || status >= 300) {
+        this.logger.warn(
+          `Cloudbeds prepare returned non-OK status ${httpStatus} for property=${input.propertyExternalId} body="${rawText.slice(0, 500).replace(/\s+/g, ' ')}"`,
+        );
+        throw new ServiceUnavailableException('Booking engine upstream error');
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(rawText);
+      } catch {
+        this.logger.error('Cloudbeds prepare returned non-JSON body');
+        throw new ServiceUnavailableException('Booking engine returned invalid response');
+      }
+
+      const parseResult = CloudbedsPrepareResponseSchema.safeParse(json);
+      if (!parseResult.success) {
+        this.logger.error(
+          `Cloudbeds prepare response failed schema validation: ${parseResult.error.message}`,
+        );
+        throw new ServiceUnavailableException('Booking engine returned unexpected payload');
+      }
+
+      const parsed = parseResult.data;
+      if (parsed.success === false) {
+        this.logger.warn(
+          `Cloudbeds prepare returned success=false: ${parsed.statusMessage ?? 'unknown'}`,
+        );
+        throw new ServiceUnavailableException(
+          parsed.statusMessage ?? 'Booking engine rejected the prepare request',
+        );
+      }
+
+      const durationMs = Date.now() - startedAt;
+      return this.normalizePrepare(input, parsed, httpStatus, durationMs);
+    } catch (err) {
+      const durationMs = Date.now() - startedAt;
+      if (err instanceof ServiceUnavailableException) throw err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        this.logger.error(`Cloudbeds prepare request timed out after ${durationMs}ms`);
+        throw new ServiceUnavailableException('Booking engine timeout');
+      }
+      this.logger.error(
+        `Cloudbeds prepare request failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new ServiceUnavailableException('Booking engine unreachable');
     }
@@ -443,5 +517,68 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     if (value === null || value === undefined) return fallback;
     const n = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(n) ? n : fallback;
+  }
+
+  // Prepare helpers.
+
+  buildPrepareFormBody(input: PrepareBookingInput): string {
+    const roomsPayload = input.rooms.reduce<Record<string, Array<{
+      addons: unknown[];
+      adults: string;
+      kids: string;
+    }>>>((acc, room) => {
+      const list = acc[room.rateId] ?? [];
+      list.push({
+        addons: room.addons ?? [],
+        adults: String(room.adults),
+        kids: String(room.kids),
+      });
+      acc[room.rateId] = list;
+      return acc;
+    }, {});
+
+    const params = new URLSearchParams();
+    params.set('widget_property', input.propertyExternalId);
+    params.set('lang', input.lang);
+    params.set('selected_checkin', input.checkin);
+    params.set('selected_checkout', input.checkout);
+    params.set('rooms', JSON.stringify(roomsPayload));
+    params.set('agree', '1');
+    params.set('currency', input.currencyCode);
+    params.set('cart_token', input.cartToken);
+    params.set('first_name', input.firstName);
+    params.set('last_name', input.lastName);
+    params.set('email', input.email);
+    params.set('phone', input.phone);
+    params.set('country', input.country);
+    params.set('booking_estimated_arrival_time', String(input.bookingEstimatedArrivalTime));
+    params.set('payment_sdk', String(input.paymentSdk));
+    params.set('cfarOffersPresented', String(input.cfarOffersPresented));
+    if (input.sessionId) params.set('sessionId', input.sessionId);
+    params.set('booking_engine_source', input.bookingEngineSource);
+    params.set('iframe', String(input.iframe));
+    return params.toString();
+  }
+
+  private normalizePrepare(
+    input: PrepareBookingInput,
+    raw: RawCloudbedsPrepareResponse,
+    httpStatus: number,
+    durationMs: number,
+  ): PrepareBookingResult {
+    return {
+      propertyExternalId: input.propertyExternalId,
+      checkin: input.checkin,
+      checkout: input.checkout,
+      currencyCode: input.currencyCode,
+      success: raw.success ?? true,
+      reservationId: raw.reservation_id != null ? String(raw.reservation_id) : null,
+      encryptedReservationId: raw.enc_res_id ?? null,
+      customerId: raw.customer_id != null ? String(raw.customer_id) : null,
+      status: raw.status ?? null,
+      raw,
+      httpStatus,
+      durationMs,
+    };
   }
 }

@@ -28,6 +28,40 @@ describe('CloudbedsPublicBookingProvider', () => {
     });
   });
 
+  describe('buildPrepareFormBody', () => {
+    it('serializes Cloudbeds prepare payload as form-urlencoded', () => {
+      const body = provider.buildPrepareFormBody({
+        ...baseInput,
+        cartToken: 'Lx71gN//token',
+        rooms: [{ rateId: '551718', adults: 1, kids: 0, addons: [] }],
+        firstName: 'Ceferino Armando',
+        lastName: 'Herrera',
+        email: 'c3f3.dev@gmail.com',
+        phone: '+543874025678',
+        country: 'AR',
+        bookingEstimatedArrivalTime: 1,
+        paymentSdk: true,
+        cfarOffersPresented: false,
+        sessionId: 'acb86933-2a32-4704-9b62-00b9d026e813',
+        bookingEngineSource: 'hosted',
+        iframe: false,
+      });
+      const params = new URLSearchParams(body);
+      expect(params.get('widget_property')).toBe('179484');
+      expect(params.get('selected_checkin')).toBe('2026-05-16');
+      expect(params.get('selected_checkout')).toBe('2026-05-18');
+      expect(params.get('currency')).toBe('ARS');
+      expect(params.get('cart_token')).toBe('Lx71gN//token');
+      expect(params.get('first_name')).toBe('Ceferino Armando');
+      expect(params.get('phone')).toBe('+543874025678');
+      expect(params.get('payment_sdk')).toBe('true');
+      expect(params.get('cfarOffersPresented')).toBe('false');
+      expect(JSON.parse(params.get('rooms') ?? '{}')).toEqual({
+        '551718': [{ addons: [], adults: '1', kids: '0' }],
+      });
+    });
+  });
+
   describe('buildReservationRedirectUrl', () => {
     it('builds slug-based reservation URL when bookingSlug is present', () => {
       const url = provider.buildReservationRedirectUrl({
@@ -184,40 +218,38 @@ describe('CloudbedsPublicBookingProvider', () => {
   });
 
   describe('searchAvailability (HTTP)', () => {
-    const ok = (body: unknown) =>
-      ({
-        ok: true,
-        status: 200,
-        text: async () => JSON.stringify(body),
-      }) as unknown as Response;
+    const ok = (body: unknown) => ({
+      status: 200,
+      text: JSON.stringify(body),
+    });
 
-    let fetchMock: jest.SpyInstance;
+    let httpPostMock: jest.SpyInstance;
 
     afterEach(() => {
-      fetchMock?.mockRestore?.();
+      httpPostMock?.mockRestore?.();
     });
 
     it('throws ServiceUnavailable on non-OK upstream', async () => {
-      fetchMock = jest
-        .spyOn(globalThis as unknown as { fetch: typeof fetch }, 'fetch')
-        .mockResolvedValue({ ok: false, status: 502, text: async () => '' } as Response);
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue({ status: 502, text: '' });
       await expect(provider.searchAvailability(baseInput)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
       );
     });
 
     it('throws ServiceUnavailable on non-JSON response', async () => {
-      fetchMock = jest
-        .spyOn(globalThis as unknown as { fetch: typeof fetch }, 'fetch')
-        .mockResolvedValue({ ok: true, status: 200, text: async () => 'not-json' } as Response);
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue({ status: 200, text: 'not-json' });
       await expect(provider.searchAvailability(baseInput)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
       );
     });
 
     it('throws ServiceUnavailable when shape validation fails', async () => {
-      fetchMock = jest
-        .spyOn(globalThis as unknown as { fetch: typeof fetch }, 'fetch')
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
         .mockResolvedValue(ok(['unexpected', 'array']));
       await expect(provider.searchAvailability(baseInput)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
@@ -225,8 +257,8 @@ describe('CloudbedsPublicBookingProvider', () => {
     });
 
     it('returns a normalized result on success', async () => {
-      fetchMock = jest
-        .spyOn(globalThis as unknown as { fetch: typeof fetch }, 'fetch')
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
         .mockResolvedValue(ok({ total: 0, room_types: [] }));
       const result = await provider.searchAvailability(baseInput);
       expect(result.totalAvailable).toBe(0);
@@ -235,19 +267,59 @@ describe('CloudbedsPublicBookingProvider', () => {
     });
 
     it('does not send cookies or Authorization header', async () => {
-      let capturedInit: RequestInit | undefined;
-      fetchMock = jest
-        .spyOn(globalThis as unknown as { fetch: typeof fetch }, 'fetch')
-        .mockImplementation(((_url: string, init: RequestInit) => {
-          capturedInit = init;
-          return Promise.resolve(ok({ total: 0, room_types: [] }));
-        }) as typeof fetch);
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue(ok({ total: 0, room_types: [] }));
       await provider.searchAvailability(baseInput);
-      expect(capturedInit).toBeDefined();
-      const headers = capturedInit?.headers as Record<string, string>;
-      expect(headers.Authorization).toBeUndefined();
-      expect(headers.Cookie).toBeUndefined();
-      expect(headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+      const [endpoint, body] = httpPostMock.mock.calls[0];
+      expect(endpoint).toContain('/booking/rooms');
+      expect(body).toContain('widget_property=179484');
+    });
+  });
+
+  describe('prepareBooking (HTTP)', () => {
+    let httpPostMock: jest.SpyInstance;
+
+    afterEach(() => {
+      httpPostMock?.mockRestore?.();
+    });
+
+    it('returns a normalized prepare result on success', async () => {
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue({
+          status: 200,
+          text: JSON.stringify({
+            success: true,
+            reservation_id: '2448738948993',
+            enc_res_id: 'encrypted',
+            customer_id: '176234319',
+            status: 'confirmed',
+          }),
+        });
+
+      const result = await provider.prepareBooking({
+        ...baseInput,
+        cartToken: 'token',
+        rooms: [{ rateId: '551718', adults: 1, kids: 0 }],
+        firstName: 'Ceferino',
+        lastName: 'Herrera',
+        email: 'c3f3.dev@gmail.com',
+        phone: '+543874025678',
+        country: 'AR',
+        bookingEstimatedArrivalTime: 1,
+        paymentSdk: true,
+        cfarOffersPresented: false,
+        bookingEngineSource: 'hosted',
+        iframe: false,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.reservationId).toBe('2448738948993');
+      expect(result.encryptedReservationId).toBe('encrypted');
+      expect(result.customerId).toBe('176234319');
+      expect(result.status).toBe('confirmed');
+      expect(result.httpStatus).toBe(200);
     });
   });
 });

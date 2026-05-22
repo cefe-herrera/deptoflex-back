@@ -131,6 +131,50 @@ export interface CalculateTotalsResult {
   durationMs: number;
 }
 
+export interface PrepareBookingRoomInput {
+  rateId: string;
+  adults: number;
+  kids: number;
+  /** Optional add-ons; provider-specific opaque shape. */
+  addons?: unknown[];
+}
+
+export interface PrepareBookingInput {
+  propertyExternalId: string;
+  checkin: string;
+  checkout: string;
+  currencyCode: string;
+  lang: string;
+  cartToken: string;
+  rooms: PrepareBookingRoomInput[];
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  country: string;
+  bookingEstimatedArrivalTime: number;
+  sessionId?: string;
+  paymentSdk: boolean;
+  cfarOffersPresented: boolean;
+  bookingEngineSource: string;
+  iframe: boolean;
+}
+
+export interface PrepareBookingResult {
+  propertyExternalId: string;
+  checkin: string;
+  checkout: string;
+  currencyCode: string;
+  success: boolean;
+  reservationId: string | null;
+  encryptedReservationId: string | null;
+  customerId: string | null;
+  status: string | null;
+  raw: unknown;
+  httpStatus: number;
+  durationMs: number;
+}
+
 export interface ReservationRedirectInput {
   propertyExternalId: string;
   bookingSlug: string | null;
@@ -153,6 +197,8 @@ export interface BookingProvider {
   searchAvailability(input: SearchAvailabilityInput): Promise<AvailabilityResult>;
 
   calculateTotals(input: CalculateTotalsInput): Promise<CalculateTotalsResult>;
+
+  prepareBooking(input: PrepareBookingInput): Promise<PrepareBookingResult>;
 
   buildReservationRedirectUrl(input: ReservationRedirectInput): string;
 }
