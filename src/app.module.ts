@@ -26,6 +26,8 @@ import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CloudbedsModule } from './modules/cloudbeds/cloudbeds.module';
+import { PropertyFlexModule } from './modules/property-flex/property-flex.module';
+import { FlexBookingsModule } from './modules/flex-bookings/flex-bookings.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -59,6 +61,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     AdminModule,
     NotificationsModule,
     CloudbedsModule,
+    PropertyFlexModule,
+    FlexBookingsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

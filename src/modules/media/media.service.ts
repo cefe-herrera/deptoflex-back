@@ -28,8 +28,42 @@ export class MediaService {
     return this.createPresign('units', unitId, dto, userId);
   }
 
+  async presignForPropertyFlex(propertyFlexId: string, dto: PresignUploadDto, userId: string) {
+    await this.assertPropertyFlexExists(propertyFlexId);
+    return this.createPresign('property-flex', propertyFlexId, dto, userId);
+  }
+
+  async confirmForPropertyFlex(propertyFlexId: string, dto: ConfirmUploadDto) {
+    const mediaFile = await this.resolveMediaFile(dto.mediaFileId);
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.isPrimary) {
+        await tx.propertyFlexImage.updateMany({ where: { propertyFlexId }, data: { isPrimary: false } });
+      }
+      const image = await tx.propertyFlexImage.create({
+        data: { propertyFlexId, mediaFileId: mediaFile.id, isPrimary: dto.isPrimary ?? false, caption: dto.caption, sortOrder: dto.sortOrder ?? 0 },
+      });
+      await tx.mediaFile.update({ where: { id: mediaFile.id }, data: { status: MediaStatus.CONFIRMED, confirmedAt: new Date() } });
+      return image;
+    });
+  }
+
+  async deletePropertyFlexImage(propertyFlexId: string, imageId: string) {
+    const image = await this.prisma.propertyFlexImage.findFirst({
+      where: { id: imageId, propertyFlexId },
+      include: { mediaFile: true },
+    });
+    if (!image) throw new NotFoundException('Image not found');
+
+    await this.prisma.$transaction([
+      this.prisma.propertyFlexImage.delete({ where: { id: imageId } }),
+      this.prisma.mediaFile.update({ where: { id: image.mediaFileId }, data: { status: MediaStatus.DELETED, deletedAt: new Date() } }),
+    ]);
+
+    this.r2.deleteObject(image.mediaFile.objectKey).catch(console.error);
+  }
+
   private async createPresign(
-    entity: 'properties' | 'units' | 'professionals',
+    entity: 'properties' | 'units' | 'professionals' | 'property-flex',
     entityId: string,
     dto: PresignUploadDto,
     userId: string,
@@ -153,6 +187,11 @@ export class MediaService {
   private async assertUnitExists(id: string) {
     const u = await this.prisma.unit.findFirst({ where: { id, deletedAt: null } });
     if (!u) throw new NotFoundException('Unit not found');
+  }
+
+  private async assertPropertyFlexExists(id: string) {
+    const p = await this.prisma.propertyFlex.findFirst({ where: { id, deletedAt: null } });
+    if (!p) throw new NotFoundException('PropertyFlex not found');
   }
 
   private async assertProfessionalExists(id: string) {

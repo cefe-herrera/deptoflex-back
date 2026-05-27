@@ -237,6 +237,7 @@ model ProfessionalProfile {
   companyMemberships UserCompanyMembership[]
   leads              Lead[]
   bookings           Booking[]
+  flexBookings       FlexBooking[]
   commissions        Commission[]
 
   @@index([status])
@@ -255,8 +256,9 @@ model CompanyProfile {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  memberships UserCompanyMembership[]
-  properties  Property[]
+  memberships    UserCompanyMembership[]
+  properties     Property[]
+  propertyFlex   PropertyFlex[]
 
   @@map("company_profiles")
 }
@@ -377,8 +379,9 @@ model Amenity {
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
-  propertyAmenities PropertyAmenity[]
-  unitAmenities     UnitAmenity[]
+  propertyAmenities    PropertyAmenity[]
+  unitAmenities        UnitAmenity[]
+  propertyFlexAmenities PropertyFlexAmenity[]
 
   @@map("amenities")
 }
@@ -463,9 +466,10 @@ model MediaFile {
   createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
-  uploadedBy     User            @relation(fields: [uploadedById], references: [id])
-  propertyImages PropertyImage[]
-  unitImages     UnitImage[]
+  uploadedBy          User                @relation(fields: [uploadedById], references: [id])
+  propertyImages      PropertyImage[]
+  unitImages          UnitImage[]
+  propertyFlexImages  PropertyFlexImage[]
 
   @@index([objectKey])
   @@index([status])
@@ -732,6 +736,131 @@ model DeviceToken {
   @@unique([userId, token])
   @@index([userId])
   @@map("device_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROPERTY FLEX (monthly rental — managed in-app)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum FlexBookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model PropertyFlex {
+  id            String         @id @default(uuid()) @db.Uuid
+  companyId     String?        @map("company_id") @db.Uuid
+  name          String         @db.VarChar(200)
+  description   String?        @db.Text
+  type          PropertyType
+  status        PropertyStatus @default(DRAFT)
+
+  floor        Int?     @db.SmallInt
+  bedrooms     Int      @default(0) @db.SmallInt
+  bathrooms    Int      @default(0) @db.SmallInt
+  maxOccupancy Int      @default(1) @map("max_occupancy") @db.SmallInt
+  sizeM2       Decimal? @map("size_m2") @db.Decimal(8, 2)
+
+  monthlyRate   Decimal  @map("monthly_rate") @db.Decimal(10, 2)
+  currency      String   @default("ARS") @db.VarChar(3)
+  minMonths     Int      @default(1) @map("min_months") @db.SmallInt
+  maxMonths     Int?     @map("max_months") @db.SmallInt
+  depositAmount Decimal? @map("deposit_amount") @db.Decimal(10, 2)
+
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  company   CompanyProfile?      @relation(fields: [companyId], references: [id])
+  address   PropertyFlexAddress?
+  images    PropertyFlexImage[]
+  amenities PropertyFlexAmenity[]
+  bookings  FlexBooking[]
+
+  @@index([status])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@map("property_flex")
+}
+
+model PropertyFlexAddress {
+  id             String   @id @default(uuid()) @db.Uuid
+  propertyFlexId String   @unique @map("property_flex_id") @db.Uuid
+  street         String   @db.VarChar(255)
+  number         String?  @db.VarChar(20)
+  apartment      String?  @db.VarChar(50)
+  neighborhood   String?  @db.VarChar(100)
+  city           String   @db.VarChar(100)
+  state          String?  @db.VarChar(100)
+  country        String   @db.VarChar(100)
+  postalCode     String?  @map("postal_code") @db.VarChar(20)
+  latitude       Decimal? @db.Decimal(10, 8)
+  longitude      Decimal? @db.Decimal(11, 8)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  propertyFlex PropertyFlex @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+
+  @@map("property_flex_addresses")
+}
+
+model PropertyFlexImage {
+  id             String   @id @default(uuid()) @db.Uuid
+  propertyFlexId String   @map("property_flex_id") @db.Uuid
+  mediaFileId    String   @map("media_file_id") @db.Uuid
+  isPrimary      Boolean  @default(false) @map("is_primary")
+  caption        String?  @db.VarChar(255)
+  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  propertyFlex PropertyFlex @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+  mediaFile    MediaFile    @relation(fields: [mediaFileId], references: [id])
+
+  @@index([propertyFlexId])
+  @@map("property_flex_images")
+}
+
+model PropertyFlexAmenity {
+  propertyFlexId String @map("property_flex_id") @db.Uuid
+  amenityId      String @map("amenity_id") @db.Uuid
+
+  propertyFlex PropertyFlex @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+  amenity      Amenity      @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyFlexId, amenityId])
+  @@map("property_flex_amenities")
+}
+
+model FlexBooking {
+  id                    String            @id @default(uuid()) @db.Uuid
+  propertyFlexId        String            @map("property_flex_id") @db.Uuid
+  professionalProfileId String?           @map("professional_profile_id") @db.Uuid
+  clientName            String            @map("client_name") @db.VarChar(200)
+  clientEmail           String?           @map("client_email") @db.VarChar(255)
+  clientPhone           String?           @map("client_phone") @db.VarChar(30)
+  startDate             DateTime          @map("start_date") @db.Date
+  endDate               DateTime          @map("end_date") @db.Date
+  totalMonths           Int               @map("total_months") @db.SmallInt
+  monthlyAmount         Decimal           @map("monthly_amount") @db.Decimal(10, 2)
+  totalAmount           Decimal           @map("total_amount") @db.Decimal(10, 2)
+  depositAmount         Decimal?          @map("deposit_amount") @db.Decimal(10, 2)
+  currency              String            @default("ARS") @db.VarChar(3)
+  status                FlexBookingStatus @default(PENDING)
+  notes                 String?           @db.Text
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt             DateTime?         @map("deleted_at") @db.Timestamptz
+
+  propertyFlex        PropertyFlex         @relation(fields: [propertyFlexId], references: [id])
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+
+  @@index([propertyFlexId, startDate, endDate])
+  @@index([status])
+  @@index([professionalProfileId])
+  @@index([deletedAt])
+  @@map("flex_bookings")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
