@@ -100,6 +100,12 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum BookingSource {
+  CLOUDBEDS
+  FLEX
+  DIRECT
+}
+
 enum CommissionStatus {
   PENDING
   APPROVED
@@ -148,6 +154,8 @@ model User {
   bookingStatusChanges BookingStatusHistory[]
   notifications        Notification[]
   deviceTokens         DeviceToken[]
+  agendaContacts       AgendaContact[] @relation("AgendaOwner")
+  agendaNotes          AgendaNote[]    @relation("AgendaNoteAuthor")
 
   @@index([email])
   @@index([deletedAt])
@@ -238,6 +246,7 @@ model ProfessionalProfile {
   leads              Lead[]
   bookings           Booking[]
   flexBookings       FlexBooking[]
+  reservationIntents ReservationIntent[]
   commissions        Commission[]
 
   @@index([status])
@@ -306,6 +315,7 @@ model Property {
   propertyAmenities    PropertyAmenity[]
   availabilitySnapshots AvailabilitySnapshot[]
   reservationIntents    ReservationIntent[]
+  bookings              Booking[]
 
   @@index([status])
   @@index([companyId])
@@ -556,8 +566,14 @@ model LeadRequest {
 
 model Booking {
   id                    String        @id @default(uuid()) @db.Uuid
+  source                BookingSource @default(DIRECT)
   leadId                String?       @unique @map("lead_id") @db.Uuid
-  unitId                String        @map("unit_id") @db.Uuid
+  unitId                String?       @map("unit_id") @db.Uuid
+  propertyId            String?       @map("property_id") @db.Uuid
+  propertyFlexId        String?       @map("property_flex_id") @db.Uuid
+  flexBookingId         String?       @unique @map("flex_booking_id") @db.Uuid
+  reservationIntentId   String?       @unique @map("reservation_intent_id") @db.Uuid
+  cloudbedsReservationId String?      @unique @map("cloudbeds_reservation_id") @db.VarChar(100)
   professionalProfileId String?       @map("professional_profile_id") @db.Uuid
   clientName            String        @map("client_name") @db.VarChar(200)
   clientEmail           String?       @map("client_email") @db.VarChar(255)
@@ -577,7 +593,11 @@ model Booking {
   deletedAt             DateTime?     @map("deleted_at") @db.Timestamptz
 
   fromLead            Lead?                  @relation(fields: [leadId], references: [id])
-  unit                Unit                   @relation(fields: [unitId], references: [id])
+  unit                Unit?                  @relation(fields: [unitId], references: [id])
+  property            Property?              @relation(fields: [propertyId], references: [id])
+  propertyFlex        PropertyFlex?          @relation(fields: [propertyFlexId], references: [id])
+  flexBooking         FlexBooking?           @relation(fields: [flexBookingId], references: [id])
+  reservationIntent   ReservationIntent?     @relation(fields: [reservationIntentId], references: [id])
   professionalProfile ProfessionalProfile?   @relation(fields: [professionalProfileId], references: [id])
   statusHistory       BookingStatusHistory[]
   commission          Commission?
@@ -585,6 +605,7 @@ model Booking {
 
   @@index([unitId, checkInDate, checkOutDate])
   @@index([status])
+  @@index([source])
   @@index([professionalProfileId])
   @@map("bookings")
 }
@@ -773,11 +794,12 @@ model PropertyFlex {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  company   CompanyProfile?      @relation(fields: [companyId], references: [id])
-  address   PropertyFlexAddress?
-  images    PropertyFlexImage[]
-  amenities PropertyFlexAmenity[]
-  bookings  FlexBooking[]
+  company          CompanyProfile?      @relation(fields: [companyId], references: [id])
+  address          PropertyFlexAddress?
+  images           PropertyFlexImage[]
+  amenities        PropertyFlexAmenity[]
+  bookings         FlexBooking[]
+  registryBookings Booking[]
 
   @@index([status])
   @@index([companyId])
@@ -855,6 +877,7 @@ model FlexBooking {
 
   propertyFlex        PropertyFlex         @relation(fields: [propertyFlexId], references: [id])
   professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  booking             Booking?
 
   @@index([propertyFlexId, startDate, endDate])
   @@index([status])
@@ -870,6 +893,7 @@ model FlexBooking {
 enum ReservationIntentStatus {
   PENDING
   REDIRECTED
+  CONFIRMED
   EXPIRED
 }
 
@@ -908,6 +932,7 @@ model ReservationIntent {
   redirectUrl  String                  @map("redirect_url") @db.Text
   status       ReservationIntentStatus @default(PENDING)
   userId       String?                 @map("user_id") @db.Uuid
+  professionalProfileId String?         @map("professional_profile_id") @db.Uuid
   ipAddress    String?                 @map("ip_address") @db.VarChar(45)
   userAgent    String?                 @map("user_agent") @db.VarChar(500)
   expiresAt    DateTime                @map("expires_at") @db.Timestamptz
@@ -915,10 +940,53 @@ model ReservationIntent {
   createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property            Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  booking             Booking?
 
   @@index([propertyId])
   @@index([status, expiresAt])
   @@index([createdAt])
   @@map("reservation_intents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENDA (libreta de contactos personal + notas de seguimiento)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AgendaContact {
+  id              String    @id @default(uuid()) @db.Uuid
+  ownerId         String    @map("owner_id") @db.Uuid
+  firstName       String    @map("first_name") @db.VarChar(100)
+  lastName        String?   @map("last_name") @db.VarChar(100)
+  phone           String?   @db.VarChar(30)
+  email           String?   @db.VarChar(255)
+  company         String?   @db.VarChar(150)
+  avatarColor     String?   @map("avatar_color") @db.VarChar(20)
+  lastContactedAt DateTime? @map("last_contacted_at") @db.Timestamptz
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  owner       User         @relation("AgendaOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  agendaNotes AgendaNote[]
+
+  @@index([ownerId, firstName])
+  @@index([ownerId, lastContactedAt])
+  @@index([deletedAt])
+  @@map("agenda_contacts")
+}
+
+model AgendaNote {
+  id          String   @id @default(uuid()) @db.Uuid
+  contactId   String   @map("contact_id") @db.Uuid
+  createdById String   @map("created_by_id") @db.Uuid
+  body        String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  contact   AgendaContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdBy User          @relation("AgendaNoteAuthor", fields: [createdById], references: [id])
+
+  @@index([contactId, createdAt])
+  @@map("agenda_notes")
 }

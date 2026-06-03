@@ -87,16 +87,18 @@ export class BookingsService {
         data: { bookingId: id, fromStatus: BookingStatus.PENDING, toStatus: BookingStatus.CONFIRMED, reason, changedById },
       });
 
-      await tx.unitAvailability.create({
-        data: {
-          unitId: booking.unitId,
-          startDate: booking.checkInDate,
-          endDate: booking.checkOutDate,
-          isAvailable: false,
-          reason: 'BOOKED',
-          bookingId: id,
-        },
-      });
+      if (booking.unitId) {
+        await tx.unitAvailability.create({
+          data: {
+            unitId: booking.unitId,
+            startDate: booking.checkInDate,
+            endDate: booking.checkOutDate,
+            isAvailable: false,
+            reason: 'BOOKED',
+            bookingId: id,
+          },
+        });
+      }
 
       let commissionRate = new Decimal(0);
       if (booking.professionalProfileId) {

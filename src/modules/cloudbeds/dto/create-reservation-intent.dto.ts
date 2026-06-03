@@ -17,6 +17,13 @@ export class CreateReservationIntentDto {
   @IsUUID()
   propertyId: string;
 
+  @ApiPropertyOptional({
+    description: 'Embajador (professional profile) que origina la intención de reserva.',
+  })
+  @IsOptional()
+  @IsUUID()
+  professionalProfileId?: string;
+
   @ApiProperty({ description: 'Cloudbeds room_type_id from the search response' })
   @IsString()
   @Length(1, 50)

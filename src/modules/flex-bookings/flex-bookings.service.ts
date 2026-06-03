@@ -3,6 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
+import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+
+const FLEX_TO_BOOKING_STATUS: Record<string, BookingStatus> = {
+  PENDING: BookingStatus.PENDING,
+  CONFIRMED: BookingStatus.CONFIRMED,
+  CANCELLED: BookingStatus.CANCELLED,
+  COMPLETED: BookingStatus.COMPLETED,
+};
 
 @Injectable()
 export class FlexBookingsService {
@@ -29,18 +38,72 @@ export class FlexBookingsService {
     });
     if (conflict) throw new BadRequestException('PropertyFlex is not available for the requested period');
 
-    return this.prisma.flexBooking.create({
-      data: {
-        ...dto,
-        startDate: start,
-        endDate: end,
-        monthlyAmount: String(dto.monthlyAmount),
-        totalAmount: String(dto.totalAmount),
-        ...(dto.depositAmount != null && { depositAmount: String(dto.depositAmount) }),
-      },
-      include: {
-        propertyFlex: { include: { address: true } },
-      },
+    const totalNights = Math.max(
+      1,
+      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+    const totalAmount = new Decimal(dto.totalAmount);
+    const currency = dto.currency ?? 'ARS';
+    const professionalProfileId = dto.professionalProfileId ?? null;
+
+    // A flex reservation is fully managed in-app: we create the FlexBooking
+    // (operational detail) AND register it in the unified Booking registry
+    // with its Commission, in a single transaction.
+    return this.prisma.$transaction(async (tx) => {
+      const flexBooking = await tx.flexBooking.create({
+        data: {
+          ...dto,
+          startDate: start,
+          endDate: end,
+          monthlyAmount: String(dto.monthlyAmount),
+          totalAmount: String(dto.totalAmount),
+          ...(dto.depositAmount != null && { depositAmount: String(dto.depositAmount) }),
+        },
+        include: { propertyFlex: { include: { address: true } } },
+      });
+
+      const booking = await tx.booking.create({
+        data: {
+          source: BookingSource.FLEX,
+          status: BookingStatus.PENDING,
+          propertyFlexId: dto.propertyFlexId,
+          flexBookingId: flexBooking.id,
+          professionalProfileId,
+          clientName: dto.clientName,
+          clientEmail: dto.clientEmail,
+          clientPhone: dto.clientPhone,
+          checkInDate: start,
+          checkOutDate: end,
+          totalNights,
+          baseAmount: totalAmount,
+          totalAmount,
+          currency,
+          notes: dto.notes,
+        },
+      });
+
+      await tx.bookingStatusHistory.create({
+        data: { bookingId: booking.id, toStatus: BookingStatus.PENDING, reason: 'Flex booking created' },
+      });
+
+      let rate = new Decimal(0);
+      if (professionalProfileId) {
+        const profile = await tx.professionalProfile.findUnique({ where: { id: professionalProfileId } });
+        if (profile) rate = profile.defaultCommissionRate;
+      }
+      await tx.commission.create({
+        data: {
+          bookingId: booking.id,
+          professionalProfileId,
+          rate,
+          baseAmount: totalAmount,
+          commissionAmount: totalAmount.mul(rate).div(100),
+          currency,
+          status: CommissionStatus.PENDING,
+        },
+      });
+
+      return flexBooking;
     });
   }
 
@@ -86,18 +149,51 @@ export class FlexBookingsService {
 
   async update(id: string, dto: UpdateFlexBookingDto) {
     await this.findOne(id);
-    return this.prisma.flexBooking.update({
-      where: { id },
-      data: dto,
-      include: { propertyFlex: { include: { address: true } } },
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.flexBooking.update({
+        where: { id },
+        data: dto,
+        include: { propertyFlex: { include: { address: true } } },
+      });
+
+      // Keep the unified Booking registry in sync with the flex status.
+      if (dto.status) {
+        const registry = await tx.booking.findUnique({ where: { flexBookingId: id } });
+        if (registry && registry.status !== FLEX_TO_BOOKING_STATUS[dto.status]) {
+          const toStatus = FLEX_TO_BOOKING_STATUS[dto.status];
+          await tx.booking.update({ where: { id: registry.id }, data: { status: toStatus } });
+          await tx.bookingStatusHistory.create({
+            data: { bookingId: registry.id, fromStatus: registry.status, toStatus, reason: 'Flex booking status update' },
+          });
+          if (dto.status === 'CANCELLED') {
+            await tx.commission.updateMany({ where: { bookingId: registry.id }, data: { status: CommissionStatus.CANCELLED } });
+          }
+        }
+      }
+
+      return updated;
     });
   }
 
   async softDelete(id: string) {
     await this.findOne(id);
-    await this.prisma.flexBooking.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: 'CANCELLED' },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.flexBooking.update({
+        where: { id },
+        data: { deletedAt: new Date(), status: 'CANCELLED' },
+      });
+
+      const registry = await tx.booking.findUnique({ where: { flexBookingId: id } });
+      if (registry) {
+        await tx.booking.update({
+          where: { id: registry.id },
+          data: { status: BookingStatus.CANCELLED, deletedAt: new Date() },
+        });
+        await tx.bookingStatusHistory.create({
+          data: { bookingId: registry.id, fromStatus: registry.status, toStatus: BookingStatus.CANCELLED, reason: 'Flex booking cancelled' },
+        });
+        await tx.commission.updateMany({ where: { bookingId: registry.id }, data: { status: CommissionStatus.CANCELLED } });
+      }
     });
   }
 }

@@ -16,6 +16,7 @@ const fakeProvider = (): jest.Mocked<BookingProvider> => ({
   calculateTotals: jest.fn(),
   prepareBooking: jest.fn(),
   buildReservationRedirectUrl: jest.fn(),
+  getConfirmation: jest.fn(),
 });
 
 const fakeSnapshots = (): jest.Mocked<AvailabilitySnapshotsService> =>

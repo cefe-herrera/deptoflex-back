@@ -24,6 +24,7 @@ import { SearchAvailabilityDto } from './dto/search-availability.dto';
 import { CreateReservationIntentDto } from './dto/create-reservation-intent.dto';
 import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 import { PrepareBookingDto } from './dto/prepare-booking.dto';
+import { ConfirmReservationDto } from './dto/confirm-reservation.dto';
 import type { PrepareBookingResult } from './providers/booking-provider.interface';
 
 @ApiTags('Booking (Cloudbeds)')
@@ -76,6 +77,19 @@ export class CloudbedsController {
     @Body() dto: PrepareBookingDto,
   ): Promise<PrepareBookingResult> {
     return this.cloudbeds.prepareBooking(dto);
+  }
+
+  @Public()
+  @Throttle({ booking: { limit: 20, ttl: 60_000 } })
+  @Post('booking/confirm')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Confirmar reserva Cloudbeds y registrarla en nuestro sistema',
+    description:
+      'Recibe el token `data_res` devuelto por Cloudbeds en la URL de confirmación, descarga y parsea la página de confirmación, y registra la reserva en nuestro sistema como `Booking` (source=CLOUDBEDS, status=CONFIRMED) junto con su `Commission`. Si se pasa `reservationIntentId`, se usa para resolver propiedad, embajador y fechas canónicas. Idempotente por id de reserva de Cloudbeds.',
+  })
+  confirmReservation(@Body() dto: ConfirmReservationDto) {
+    return this.intents.confirmFromCloudbeds(dto);
   }
 
   @Public()

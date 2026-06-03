@@ -7,6 +7,8 @@ import {
   BookingProvider,
   CalculateTotalsInput,
   CalculateTotalsResult,
+  ConfirmationInput,
+  ConfirmationResult,
   NightlyRate,
   OtaRateComparison,
   PrepareBookingInput,
@@ -70,6 +72,11 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   /** Base URL for the official reservation page (where users are redirected). */
   private readonly reservationBaseUrl =
     process.env.CLOUDBEDS_RESERVATION_BASE_URL ?? 'https://hotels.cloudbeds.com';
+
+  /** Confirmation page endpoint, overridable via env. */
+  private readonly confirmationEndpoint =
+    process.env.CLOUDBEDS_BOOKING_CONFIRMATION_URL ??
+    'https://hotels.cloudbeds.com/booking/confirmation';
 
   /** Generic backend UA — never spoof a browser. */
   private readonly userAgent ='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
@@ -320,6 +327,185 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     if (input.children && input.children > 0) params.set('children', String(input.children));
 
     return `${this.reservationBaseUrl}/${input.lang}/reservation/${input.bookingSlug}/?${params.toString()}`;
+  }
+
+  async getConfirmation(input: ConfirmationInput): Promise<ConfirmationResult> {
+    const startedAt = Date.now();
+    const url = `${this.confirmationEndpoint}?data_res=${encodeURIComponent(input.dataRes)}`;
+
+    let httpStatus = 0;
+    let rawText = '';
+    try {
+      this.logger.log(`httpGet confirmation endpoint=${this.confirmationEndpoint}`);
+      const { status, text } = await this.httpGet(url);
+      httpStatus = status;
+      rawText = text;
+
+      if (status < 200 || status >= 300) {
+        this.logger.warn(`Cloudbeds confirmation returned non-OK status ${httpStatus}`);
+        throw new ServiceUnavailableException('Booking engine confirmation upstream error');
+      }
+
+      const durationMs = Date.now() - startedAt;
+      return this.parseConfirmation(rawText, httpStatus, durationMs);
+    } catch (err) {
+      const durationMs = Date.now() - startedAt;
+      if (err instanceof ServiceUnavailableException) throw err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        this.logger.error(`Cloudbeds confirmation request timed out after ${durationMs}ms`);
+        throw new ServiceUnavailableException('Booking engine timeout');
+      }
+      this.logger.error(
+        `Cloudbeds confirmation request failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new ServiceUnavailableException('Booking engine unreachable');
+    }
+  }
+
+  /**
+   * Best-effort parse of the confirmation page. The page is HTML and not an
+   * official contract, so we (1) try to extract an embedded JSON blob, then
+   * (2) fall back to targeted regexes, and always keep a truncated raw copy.
+   */
+  private parseConfirmation(
+    html: string,
+    httpStatus: number,
+    durationMs: number,
+  ): ConfirmationResult {
+    const parsed = this.extractEmbeddedJson(html);
+
+    const pick = (...keys: string[]): unknown => {
+      for (const k of keys) {
+        const v = parsed?.[k];
+        if (v != null && v !== '') return v;
+      }
+      return null;
+    };
+
+    const asString = (v: unknown): string | null =>
+      v == null ? null : String(v).trim() || null;
+    const asNumber = (v: unknown): number | null => {
+      if (v == null) return null;
+      const n = typeof v === 'number' ? v : Number(String(v).replace(/[^0-9.-]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const reservationId =
+      asString(pick('reservation_id', 'reservationId', 'res_id', 'reservationID')) ??
+      this.regexFirst(html, /reservation[_-]?id["'\s:=]+([A-Za-z0-9-]+)/i);
+
+    const guestFirstName = asString(pick('first_name', 'firstName', 'guest_first_name'));
+    const guestLastName = asString(pick('last_name', 'lastName', 'guest_last_name'));
+    const guestNameJoined = [guestFirstName, guestLastName].filter(Boolean).join(' ').trim();
+    const guestName =
+      asString(pick('guest_name', 'guestName', 'name')) ||
+      (guestNameJoined.length > 0 ? guestNameJoined : null);
+
+    const checkin =
+      asString(pick('checkin', 'checkIn', 'check_in', 'selected_checkin')) ??
+      this.regexFirst(html, /check[_-]?in["'\s:=]+(\d{4}-\d{2}-\d{2})/i);
+    const checkout =
+      asString(pick('checkout', 'checkOut', 'check_out', 'selected_checkout')) ??
+      this.regexFirst(html, /check[_-]?out["'\s:=]+(\d{4}-\d{2}-\d{2})/i);
+
+    const totalAmount =
+      asNumber(pick('grandTotal', 'grand_total', 'total', 'totalAmount', 'total_amount')) ??
+      asNumber(this.regexFirst(html, /grand[_-]?total["'\s:=]+([0-9.,]+)/i));
+
+    const currencyCode = asString(pick('currency', 'currencyCode', 'currency_code'));
+    const propertyExternalId = asString(
+      pick('widget_property', 'property_id', 'propertyId', 'propertyID'),
+    );
+    const roomTypeId = asString(pick('room_type_id', 'roomTypeId'));
+    const status = asString(pick('status', 'reservation_status'));
+    const guestEmail = asString(pick('email', 'guest_email'));
+    const guestPhone = asString(pick('phone', 'guest_phone'));
+
+    return {
+      reservationId,
+      guestFirstName,
+      guestLastName,
+      guestName,
+      guestEmail,
+      guestPhone,
+      checkin,
+      checkout,
+      totalAmount,
+      currencyCode,
+      propertyExternalId,
+      roomTypeId,
+      status,
+      parsed,
+      raw: html.slice(0, 20_000),
+      httpStatus,
+      durationMs,
+    };
+  }
+
+  /** Try common embedded-JSON patterns used by booking-engine pages. */
+  private extractEmbeddedJson(html: string): Record<string, unknown> | null {
+    const patterns = [
+      /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i,
+      /window\.reservationData\s*=\s*(\{[\s\S]*?\})\s*;?\s*<\/script>/i,
+      /var\s+reservation\s*=\s*(\{[\s\S]*?\})\s*;/i,
+      /data-reservation=["'](\{[\s\S]*?\})["']/i,
+    ];
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m?.[1]) {
+        try {
+          const decoded = m[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+          const obj = JSON.parse(decoded) as Record<string, unknown>;
+          // If the blob nests the reservation under a common key, surface it.
+          const nested =
+            (obj.reservation as Record<string, unknown>) ??
+            (obj.data as Record<string, unknown>) ??
+            null;
+          return nested && typeof nested === 'object' ? { ...obj, ...nested } : obj;
+        } catch {
+          // try next pattern
+        }
+      }
+    }
+    return null;
+  }
+
+  private regexFirst(text: string, re: RegExp): string | null {
+    const m = text.match(re);
+    return m?.[1]?.trim() || null;
+  }
+
+  /** Minimal HTTPS GET mirroring httpPost (no browser-spoofing headers). */
+  private httpGet(endpoint: string): Promise<{ status: number; text: string }> {
+    return new Promise((resolve, reject) => {
+      const url = new URL(endpoint);
+      const req = https.request(
+        {
+          method: 'GET',
+          host: url.hostname,
+          port: url.port || 443,
+          path: `${url.pathname}${url.search}`,
+          headers: {
+            'User-Agent': this.userAgent,
+            Accept: '*/*',
+          },
+          timeout: this.timeoutMs,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            resolve({
+              status: res.statusCode ?? 0,
+              text: Buffer.concat(chunks).toString('utf8'),
+            });
+          });
+        },
+      );
+      req.on('timeout', () => req.destroy(new Error('AbortError')));
+      req.on('error', reject);
+      req.end();
+    });
   }
 
   // ── internals ───────────────────────────────────────────────────────────

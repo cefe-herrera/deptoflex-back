@@ -188,6 +188,36 @@ export interface ReservationRedirectInput {
   children?: number;
 }
 
+export interface ConfirmationInput {
+  /** Opaque `data_res` token from the Cloudbeds confirmation URL. */
+  dataRes: string;
+}
+
+export interface ConfirmationResult {
+  /** Cloudbeds reservation identifier (numeric/string), if parseable. */
+  reservationId: string | null;
+  guestFirstName: string | null;
+  guestLastName: string | null;
+  guestName: string | null;
+  guestEmail: string | null;
+  guestPhone: string | null;
+  /** ISO-8601 (YYYY-MM-DD) when parseable. */
+  checkin: string | null;
+  checkout: string | null;
+  totalAmount: number | null;
+  currencyCode: string | null;
+  /** External property id (Cloudbeds widget_property), if present. */
+  propertyExternalId: string | null;
+  roomTypeId: string | null;
+  status: string | null;
+  /** Best-effort structured payload extracted from the page (if any). */
+  parsed: Record<string, unknown> | null;
+  /** Raw response text (truncated) for auditing. */
+  raw: string;
+  httpStatus: number;
+  durationMs: number;
+}
+
 export const BOOKING_PROVIDER = Symbol('BOOKING_PROVIDER');
 
 export interface BookingProvider {
@@ -201,4 +231,12 @@ export interface BookingProvider {
   prepareBooking(input: PrepareBookingInput): Promise<PrepareBookingResult>;
 
   buildReservationRedirectUrl(input: ReservationRedirectInput): string;
+
+  /**
+   * Fetch and parse the Cloudbeds public confirmation page for a finalized
+   * reservation (the `data_res` token returned in the confirmation URL).
+   * Best-effort: callers must treat unparsed fields as null and rely on the
+   * persisted intent for canonical data when possible.
+   */
+  getConfirmation(input: ConfirmationInput): Promise<ConfirmationResult>;
 }
