@@ -24,7 +24,9 @@ import { NotificationType } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { TestNotificationDto } from './dto/test-notification.dto';
+import { SendNotificationDto } from './dto/send-notification.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Notifications')
 @ApiBearerAuth('access-token')
@@ -57,6 +59,18 @@ export class NotificationsController {
   })
   unreadCount(@CurrentUser() user: CurrentUserPayload) {
     return this.notifications.unreadCount(user.id).then((count) => ({ count }));
+  }
+
+  @Post('send')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Enviar notificación (admin)',
+    description:
+      'Despliega una notificación a un usuario, a todos los de un rol, o a todos los usuarios activos. Persiste en DB, emite por WebSocket y envía push.',
+  })
+  send(@Body() dto: SendNotificationDto) {
+    return this.notifications.broadcast(dto);
   }
 
   @Post('test')

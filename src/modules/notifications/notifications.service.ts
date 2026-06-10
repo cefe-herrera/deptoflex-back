@@ -1,10 +1,11 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationType, DeviceProvider } from '@prisma/client';
 import { NotificationsGateway } from './notifications.gateway';
 import { FcmProvider } from './providers/fcm.provider';
 import { WebPushProvider } from './providers/webpush.provider';
 import { RegisterDeviceDto } from './dto/register-device.dto';
+import { NotificationTarget, SendNotificationDto } from './dto/send-notification.dto';
 
 export interface SendNotificationInput {
   userId: string;
@@ -121,6 +122,38 @@ export class NotificationsService {
         url: '/dashboard/activity',
       },
     });
+  }
+
+  /** Admin broadcast: send to one user, a role, or all active users. */
+  async broadcast(dto: SendNotificationDto): Promise<{ sent: number }> {
+    const base = {
+      type: dto.type,
+      title: dto.title,
+      body: dto.body,
+      data: {
+        url: dto.url ?? '/dashboard/notifications',
+        ...dto.data,
+      },
+    };
+
+    if (dto.target === NotificationTarget.USER) {
+      if (!dto.userId) throw new BadRequestException('userId is required when target is user');
+      await this.sendToUser({ ...base, userId: dto.userId });
+      return { sent: 1 };
+    }
+
+    if (dto.target === NotificationTarget.ROLE) {
+      if (!dto.role) throw new BadRequestException('role is required when target is role');
+      const sent = await this.sendToRole(dto.role, base);
+      return { sent: sent.length };
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    await Promise.all(users.map((u) => this.sendToUser({ ...base, userId: u.id })));
+    return { sent: users.length };
   }
 
   // ── Notifications listing ─────────────────────────────────────────────────
