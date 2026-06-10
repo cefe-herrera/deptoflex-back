@@ -29,6 +29,7 @@ import { CloudbedsModule } from './modules/cloudbeds/cloudbeds.module';
 import { PropertyFlexModule } from './modules/property-flex/property-flex.module';
 import { FlexBookingsModule } from './modules/flex-bookings/flex-bookings.module';
 import { AgendaModule } from './modules/agenda/agenda.module';
+import { ActivityModule } from './modules/activity/activity.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -65,6 +66,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PropertyFlexModule,
     FlexBookingsModule,
     AgendaModule,
+    ActivityModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
