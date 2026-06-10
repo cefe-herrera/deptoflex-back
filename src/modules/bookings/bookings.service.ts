@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
-import { BookingStatus, CommissionStatus } from '@prisma/client';
+import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
@@ -40,14 +40,24 @@ export class BookingsService {
     });
   }
 
-  async findAll(page = 1, limit = 20, userId?: string, roles?: string[]) {
+  async findAll(
+    page = 1,
+    limit = 20,
+    userId?: string,
+    roles?: string[],
+    options?: { excludeSource?: BookingSource },
+  ) {
     const skip = (page - 1) * limit;
     const where: any = { deletedAt: null };
 
-    const isAdmin = roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
-    if (!isAdmin && userId) {
+    const isStaff = roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
+    if (!isStaff && userId) {
       const profile = await this.prisma.professionalProfile.findUnique({ where: { userId } });
       if (profile) where.professionalProfileId = profile.id;
+    }
+
+    if (options?.excludeSource) {
+      where.source = { not: options.excludeSource };
     }
 
     const [items, total] = await Promise.all([
@@ -55,7 +65,20 @@ export class BookingsService {
         where,
         skip,
         take: limit,
-        include: { unit: { select: { id: true, name: true } }, commission: { select: { status: true, commissionAmount: true } } },
+        include: {
+          unit: { select: { id: true, name: true } },
+          property: { select: { id: true, name: true } },
+          propertyFlex: { select: { id: true, name: true } },
+          professionalProfile: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              user: { select: { email: true } },
+            },
+          },
+          commission: { select: { status: true, commissionAmount: true } },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.booking.count({ where }),

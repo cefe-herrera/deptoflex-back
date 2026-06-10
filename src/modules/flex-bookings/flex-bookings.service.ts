@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
@@ -23,7 +24,7 @@ export class FlexBookingsService {
     private notifications: NotificationsService,
   ) {}
 
-  async create(dto: CreateFlexBookingDto) {
+  async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
     const propertyFlex = await this.prisma.propertyFlex.findFirst({
       where: { id: dto.propertyFlexId, deletedAt: null },
     });
@@ -50,15 +51,30 @@ export class FlexBookingsService {
     );
     const totalAmount = new Decimal(dto.totalAmount);
     const currency = dto.currency ?? 'ARS';
-    const professionalProfileId = dto.professionalProfileId ?? null;
+
+    const isStaff = user?.roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
+    let professionalProfileId = dto.professionalProfileId ?? null;
+
+    if (!isStaff) {
+      if (!user) throw new ForbiddenException('Authentication required');
+      const profile = await this.prisma.professionalProfile.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      });
+      if (!profile) {
+        throw new ForbiddenException('Necesitás un perfil profesional para crear reservas flex');
+      }
+      professionalProfileId = profile.id;
+    }
 
     // A flex reservation is fully managed in-app: we create the FlexBooking
     // (operational detail) AND register it in the unified Booking registry
     // with its Commission, in a single transaction.
-    return this.prisma.$transaction(async (tx) => {
+    const { flexBooking, bookingId } = await this.prisma.$transaction(async (tx) => {
       const flexBooking = await tx.flexBooking.create({
         data: {
           ...dto,
+          professionalProfileId,
           startDate: start,
           endDate: end,
           monthlyAmount: String(dto.monthlyAmount),
@@ -109,8 +125,14 @@ export class FlexBookingsService {
         },
       });
 
-      return flexBooking;
+      return { flexBooking, bookingId: booking.id };
     });
+
+    this.notifications.notifyBookingCreated(bookingId).catch((err) =>
+      this.logger.error(`notifyBookingCreated failed for ${bookingId}`, err),
+    );
+
+    return flexBooking;
   }
 
   async findAll(query: QueryFlexBookingDto) {

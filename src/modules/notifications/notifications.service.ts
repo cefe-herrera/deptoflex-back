@@ -93,6 +93,41 @@ export class NotificationsService {
     ]);
   }
 
+  /** Notifies OPERATOR and ADMIN when a new booking is created (flex request, etc.). */
+  async notifyBookingCreated(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        propertyFlex: { select: { name: true } },
+        property: { select: { name: true } },
+        unit: { select: { name: true } },
+      },
+    });
+    if (!booking) return;
+
+    const placeName =
+      booking.propertyFlex?.name ??
+      booking.property?.name ??
+      booking.unit?.name ??
+      'una propiedad';
+    const kind = booking.source === 'FLEX' ? 'Flex' : 'Temporal';
+
+    const payload = {
+      type: NotificationType.BOOKING_CREATED,
+      title: 'Nueva solicitud de reserva',
+      body: `${booking.clientName} solicitó una reserva ${kind} en ${placeName}.`,
+      data: {
+        bookingId: booking.id,
+        url: '/admin/bookings',
+      },
+    };
+
+    await Promise.all([
+      this.sendToRole('OPERATOR', payload),
+      this.sendToRole('ADMIN', payload),
+    ]);
+  }
+
   /** Notifies the professional/ambassador when their booking is confirmed. */
   async notifyBookingConfirmed(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({

@@ -74,6 +74,22 @@ export class PropertyFlexController {
     return this.propertyFlexService.softDelete(id);
   }
 
+  @Get(':id/booked-periods')
+  @ApiOperation({
+    summary: 'Períodos ocupados de una propiedad flex',
+    description: 'Devuelve reservas activas que solapan el rango indicado, para pintar el calendario.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({ name: 'from', required: true, type: String, description: 'Inicio del rango (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: true, type: String, description: 'Fin del rango (YYYY-MM-DD)' })
+  getBookedPeriods(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.propertyFlexService.getBookedPeriods(id, from, to);
+  }
+
   @Get(':id/availability')
   @ApiOperation({
     summary: 'Consultar disponibilidad de una propiedad flex',

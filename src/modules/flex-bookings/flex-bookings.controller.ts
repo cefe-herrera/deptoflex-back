@@ -7,6 +7,7 @@ import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
 
 @ApiTags('Flex Bookings')
@@ -16,13 +17,14 @@ export class FlexBookingsController {
   constructor(private flexBookingsService: FlexBookingsService) {}
 
   @Post()
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Crear reserva flex',
-    description: 'Registra una nueva reserva mensualizada para una propiedad flex. Valida disponibilidad automáticamente. Solo ADMIN/OPERATOR.',
+    description:
+      'Registra una solicitud de reserva mensualizada. ADMIN/OPERATOR pueden asignar cualquier embajador; AMBASSADOR crea con su propio perfil profesional.',
   })
-  create(@Body() dto: CreateFlexBookingDto) {
-    return this.flexBookingsService.create(dto);
+  create(@Body() dto: CreateFlexBookingDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.flexBookingsService.create(dto, user);
   }
 
   @Get()

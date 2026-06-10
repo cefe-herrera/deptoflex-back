@@ -122,4 +122,30 @@ export class PropertyFlexService {
 
     return { available: !overlapping, ...(overlapping && { conflictingBookingId: overlapping.id }) };
   }
+
+  async getBookedPeriods(id: string, from: string, to: string) {
+    await this.findOne(id);
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+
+    const bookings = await this.prisma.flexBooking.findMany({
+      where: {
+        propertyFlexId: id,
+        deletedAt: null,
+        status: { notIn: ['CANCELLED'] },
+        startDate: { lt: toDate },
+        endDate: { gt: fromDate },
+      },
+      select: { startDate: true, endDate: true, status: true },
+      orderBy: { startDate: 'asc' },
+    });
+
+    return {
+      periods: bookings.map((b) => ({
+        startDate: b.startDate.toISOString().slice(0, 10),
+        endDate: b.endDate.toISOString().slice(0, 10),
+        status: b.status,
+      })),
+    };
+  }
 }
