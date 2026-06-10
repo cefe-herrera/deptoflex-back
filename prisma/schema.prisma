@@ -257,7 +257,8 @@ model ProfessionalProfile {
   bookings           Booking[]
   flexBookings       FlexBooking[]
   reservationIntents ReservationIntent[]
-  commissions        Commission[]
+  commissions              Commission[]
+  flexCommissionOverrides  AmbassadorFlexCommission[]
 
   @@index([status])
   @@map("professional_profiles")
@@ -798,23 +799,41 @@ model PropertyFlex {
   currency      String   @default("ARS") @db.VarChar(3)
   minMonths     Int      @default(1) @map("min_months") @db.SmallInt
   maxMonths     Int?     @map("max_months") @db.SmallInt
-  depositAmount Decimal? @map("deposit_amount") @db.Decimal(10, 2)
+  depositAmount   Decimal? @map("deposit_amount") @db.Decimal(10, 2)
+  commissionRate  Decimal? @map("commission_rate") @db.Decimal(5, 2)
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  company          CompanyProfile?      @relation(fields: [companyId], references: [id])
-  address          PropertyFlexAddress?
-  images           PropertyFlexImage[]
-  amenities        PropertyFlexAmenity[]
-  bookings         FlexBooking[]
-  registryBookings Booking[]
+  company              CompanyProfile?            @relation(fields: [companyId], references: [id])
+  address              PropertyFlexAddress?
+  images               PropertyFlexImage[]
+  amenities            PropertyFlexAmenity[]
+  bookings             FlexBooking[]
+  registryBookings     Booking[]
+  ambassadorOverrides  AmbassadorFlexCommission[]
 
   @@index([status])
   @@index([companyId])
   @@index([deletedAt])
   @@map("property_flex")
+}
+
+model AmbassadorFlexCommission {
+  id                    String   @id @default(uuid()) @db.Uuid
+  professionalProfileId String   @map("professional_profile_id") @db.Uuid
+  propertyFlexId        String   @map("property_flex_id") @db.Uuid
+  rate                  Decimal  @db.Decimal(5, 2)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  propertyFlex        PropertyFlex        @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalProfileId, propertyFlexId])
+  @@index([propertyFlexId])
+  @@map("ambassador_flex_commissions")
 }
 
 model PropertyFlexAddress {

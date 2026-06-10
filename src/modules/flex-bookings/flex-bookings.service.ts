@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
@@ -22,6 +23,7 @@ export class FlexBookingsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private commissionRates: CommissionRatesService,
   ) {}
 
   async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
@@ -108,11 +110,11 @@ export class FlexBookingsService {
         data: { bookingId: booking.id, toStatus: BookingStatus.PENDING, reason: 'Flex booking created' },
       });
 
-      let rate = new Decimal(0);
-      if (professionalProfileId) {
-        const profile = await tx.professionalProfile.findUnique({ where: { id: professionalProfileId } });
-        if (profile) rate = profile.defaultCommissionRate;
-      }
+      const rate = await this.commissionRates.resolveFlexRate(
+        dto.propertyFlexId,
+        professionalProfileId,
+        tx,
+      );
       await tx.commission.create({
         data: {
           bookingId: booking.id,

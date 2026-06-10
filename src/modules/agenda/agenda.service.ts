@@ -48,7 +48,20 @@ export class AgendaService {
         : [{ firstName: 'asc' }, { lastName: 'asc' }];
 
     const [items, total] = await Promise.all([
-      this.prisma.agendaContact.findMany({ where, skip, take: limit, orderBy }),
+      this.prisma.agendaContact.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          _count: { select: { agendaNotes: true } },
+          agendaNotes: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, body: true, createdAt: true },
+          },
+        },
+      }),
       this.prisma.agendaContact.count({ where }),
     ]);
 

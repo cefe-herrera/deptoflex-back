@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 
 @Injectable()
 export class ProfessionalsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private commissionRates: CommissionRatesService,
+  ) {}
 
   async findAll(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -53,7 +57,13 @@ export class ProfessionalsService {
 
   async adminUpdate(id: string, dto: AdminUpdateProfessionalDto) {
     await this.findOne(id);
-    return this.prisma.professionalProfile.update({ where: { id }, data: dto });
+    const updated = await this.prisma.professionalProfile.update({ where: { id }, data: dto });
+
+    if (dto.defaultCommissionRate != null) {
+      await this.commissionRates.recalculateForAmbassador(id);
+    }
+
+    return updated;
   }
 
   async requestAmbassador(userId: string, dto: RequestAmbassadorDto) {

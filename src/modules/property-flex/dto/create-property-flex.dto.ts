@@ -40,6 +40,7 @@ export class CreatePropertyFlexDto {
   @IsOptional() @IsInt() @Min(1) minMonths?: number;
   @IsOptional() @IsInt() @Min(1) maxMonths?: number;
   @IsOptional() @IsNumber() @Min(0) depositAmount?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number;
 
   @IsOptional()
   @ValidateNested()

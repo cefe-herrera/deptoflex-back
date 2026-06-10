@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CreatePropertyFlexDto } from './dto/create-property-flex.dto';
 import { UpdatePropertyFlexDto } from './dto/update-property-flex.dto';
 import { QueryPropertyFlexDto } from './dto/query-property-flex.dto';
@@ -7,15 +8,19 @@ import { PropertyStatus } from '@prisma/client';
 
 @Injectable()
 export class PropertyFlexService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private commissionRates: CommissionRatesService,
+  ) {}
 
   async create(dto: CreatePropertyFlexDto) {
-    const { address, monthlyRate, depositAmount, ...rest } = dto;
+    const { address, monthlyRate, depositAmount, commissionRate, ...rest } = dto;
     return this.prisma.propertyFlex.create({
       data: {
         ...rest,
         monthlyRate: String(monthlyRate),
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
+        ...(commissionRate != null && { commissionRate: String(commissionRate) }),
         ...(address && { address: { create: address } }),
       },
       include: { address: true },
@@ -69,17 +74,24 @@ export class PropertyFlexService {
 
   async update(id: string, dto: UpdatePropertyFlexDto) {
     await this.findOne(id);
-    const { address, monthlyRate, depositAmount, ...rest } = dto;
-    return this.prisma.propertyFlex.update({
+    const { address, monthlyRate, depositAmount, commissionRate, ...rest } = dto;
+    const updated = await this.prisma.propertyFlex.update({
       where: { id },
       data: {
         ...rest,
         ...(monthlyRate != null && { monthlyRate: String(monthlyRate) }),
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
+        ...(commissionRate != null && { commissionRate: String(commissionRate) }),
         ...(address && { address: { upsert: { create: address, update: address } } }),
       },
       include: { address: true },
     });
+
+    if (commissionRate != null) {
+      await this.commissionRates.recalculateForPropertyFlex(id);
+    }
+
+    return updated;
   }
 
   async softDelete(id: string) {
