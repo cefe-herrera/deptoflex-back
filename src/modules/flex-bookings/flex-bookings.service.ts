@@ -178,27 +178,112 @@ export class FlexBookingsService {
   }
 
   async update(id: string, dto: UpdateFlexBookingDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
     let confirmedBookingId: string | null = null;
+
+    const start = dto.startDate ? new Date(dto.startDate) : existing.startDate;
+    const end = dto.endDate ? new Date(dto.endDate) : existing.endDate;
+    if (start >= end) throw new BadRequestException('startDate must be before endDate');
+
+    if (dto.startDate || dto.endDate) {
+      const conflict = await this.prisma.flexBooking.findFirst({
+        where: {
+          id: { not: id },
+          propertyFlexId: existing.propertyFlexId,
+          deletedAt: null,
+          status: { notIn: ['CANCELLED'] },
+          startDate: { lt: end },
+          endDate: { gt: start },
+        },
+      });
+      if (conflict) throw new BadRequestException('PropertyFlex is not available for the requested period');
+    }
+
+    const monthlyAmount = dto.monthlyAmount ?? Number(existing.monthlyAmount);
+    const totalMonths = dto.totalMonths ?? existing.totalMonths;
+    const totalAmount = dto.totalAmount ?? monthlyAmount * totalMonths;
+
+    const flexData: Record<string, unknown> = {};
+    if (dto.status) flexData.status = dto.status;
+    if (dto.notes !== undefined) flexData.notes = dto.notes;
+    if (dto.clientName) flexData.clientName = dto.clientName;
+    if (dto.clientEmail !== undefined) flexData.clientEmail = dto.clientEmail || null;
+    if (dto.clientPhone !== undefined) flexData.clientPhone = dto.clientPhone || null;
+    if (dto.startDate) flexData.startDate = start;
+    if (dto.endDate) flexData.endDate = end;
+    if (dto.totalMonths) flexData.totalMonths = totalMonths;
+    if (dto.monthlyAmount != null) flexData.monthlyAmount = String(dto.monthlyAmount);
+    if (dto.totalAmount != null || dto.monthlyAmount != null || dto.totalMonths) {
+      flexData.totalAmount = String(totalAmount);
+    }
+
+    const totalNights = Math.max(
+      1,
+      Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+    );
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.flexBooking.update({
         where: { id },
-        data: dto,
+        data: flexData,
         include: { propertyFlex: { include: { address: true } } },
       });
 
-      // Keep the unified Booking registry in sync with the flex status.
+      const registry = await tx.booking.findUnique({ where: { flexBookingId: id } });
+      if (!registry) return result;
+
+      const registryData: Record<string, unknown> = {};
+      if (dto.clientName) registryData.clientName = dto.clientName;
+      if (dto.clientEmail !== undefined) registryData.clientEmail = dto.clientEmail || null;
+      if (dto.clientPhone !== undefined) registryData.clientPhone = dto.clientPhone || null;
+      if (dto.notes !== undefined) registryData.notes = dto.notes || null;
+      if (dto.startDate) registryData.checkInDate = start;
+      if (dto.endDate) registryData.checkOutDate = end;
+      if (dto.startDate || dto.endDate) registryData.totalNights = totalNights;
+      if (dto.totalAmount != null || dto.monthlyAmount != null || dto.totalMonths) {
+        const amount = new Decimal(totalAmount);
+        registryData.baseAmount = amount;
+        registryData.totalAmount = amount;
+      }
+
+      if (Object.keys(registryData).length > 0) {
+        await tx.booking.update({ where: { id: registry.id }, data: registryData });
+      }
+
+      if (dto.totalAmount != null || dto.monthlyAmount != null || dto.totalMonths) {
+        const rate = await this.commissionRates.resolveFlexRate(
+          existing.propertyFlexId,
+          registry.professionalProfileId,
+          tx,
+        );
+        const amount = new Decimal(totalAmount);
+        await tx.commission.updateMany({
+          where: { bookingId: registry.id, status: CommissionStatus.PENDING },
+          data: {
+            rate,
+            baseAmount: amount,
+            commissionAmount: amount.mul(rate).div(100),
+          },
+        });
+      }
+
       if (dto.status) {
-        const registry = await tx.booking.findUnique({ where: { flexBookingId: id } });
-        if (registry && registry.status !== FLEX_TO_BOOKING_STATUS[dto.status]) {
-          const toStatus = FLEX_TO_BOOKING_STATUS[dto.status];
+        const toStatus = FLEX_TO_BOOKING_STATUS[dto.status];
+        if (registry.status !== toStatus) {
           await tx.booking.update({ where: { id: registry.id }, data: { status: toStatus } });
           await tx.bookingStatusHistory.create({
-            data: { bookingId: registry.id, fromStatus: registry.status, toStatus, reason: 'Flex booking status update' },
+            data: {
+              bookingId: registry.id,
+              fromStatus: registry.status,
+              toStatus,
+              reason: 'Flex booking status update',
+            },
           });
           if (dto.status === 'CANCELLED') {
-            await tx.commission.updateMany({ where: { bookingId: registry.id }, data: { status: CommissionStatus.CANCELLED } });
+            await tx.commission.updateMany({
+              where: { bookingId: registry.id },
+              data: { status: CommissionStatus.CANCELLED },
+            });
           }
           if (dto.status === 'CONFIRMED') {
             confirmedBookingId = registry.id;

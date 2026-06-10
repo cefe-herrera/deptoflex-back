@@ -1,9 +1,19 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { CommissionStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 type DbClient = PrismaService | Prisma.TransactionClient;
+
+export type FlexCommissionRateSource = 'OVERRIDE' | 'PROPERTY' | 'AMBASSADOR_DEFAULT' | 'ZERO';
+
+const RATE_SOURCE_LABELS: Record<FlexCommissionRateSource, string> = {
+  OVERRIDE: 'Acuerdo especial para vos en esta propiedad',
+  PROPERTY: 'Tasa de la propiedad',
+  AMBASSADOR_DEFAULT: 'Tu tasa por defecto',
+  ZERO: 'Sin comisión configurada',
+};
 
 @Injectable()
 export class CommissionRatesService {
@@ -14,6 +24,15 @@ export class CommissionRatesService {
     professionalProfileId: string | null | undefined,
     db: DbClient = this.prisma,
   ): Promise<Decimal> {
+    const { rate } = await this.resolveFlexRateWithSource(propertyFlexId, professionalProfileId, db);
+    return rate;
+  }
+
+  async resolveFlexRateWithSource(
+    propertyFlexId: string,
+    professionalProfileId: string | null | undefined,
+    db: DbClient = this.prisma,
+  ): Promise<{ rate: Decimal; source: FlexCommissionRateSource }> {
     if (professionalProfileId) {
       const override = await db.ambassadorFlexCommission.findUnique({
         where: {
@@ -23,24 +42,61 @@ export class CommissionRatesService {
           },
         },
       });
-      if (override) return override.rate;
+      if (override) return { rate: override.rate, source: 'OVERRIDE' };
     }
 
     const property = await db.propertyFlex.findUnique({
       where: { id: propertyFlexId },
       select: { commissionRate: true },
     });
-    if (property?.commissionRate != null) return property.commissionRate;
+    if (property?.commissionRate != null) {
+      return { rate: property.commissionRate, source: 'PROPERTY' };
+    }
 
     if (professionalProfileId) {
       const profile = await db.professionalProfile.findUnique({
         where: { id: professionalProfileId },
         select: { defaultCommissionRate: true },
       });
-      if (profile) return profile.defaultCommissionRate;
+      if (profile && !profile.defaultCommissionRate.isZero()) {
+        return { rate: profile.defaultCommissionRate, source: 'AMBASSADOR_DEFAULT' };
+      }
     }
 
-    return new Decimal(0);
+    return { rate: new Decimal(0), source: 'ZERO' };
+  }
+
+  async previewFlexCommissionForUser(
+    propertyFlexId: string,
+    totalAmount: number,
+    user: CurrentUserPayload,
+  ) {
+    const property = await this.prisma.propertyFlex.findFirst({
+      where: { id: propertyFlexId, deletedAt: null },
+      select: { currency: true },
+    });
+    if (!property) throw new NotFoundException('PropertyFlex not found');
+
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new ForbiddenException('Necesitás un perfil profesional para ver la comisión');
+    }
+
+    const { rate, source } = await this.resolveFlexRateWithSource(propertyFlexId, profile.id);
+    const rateNum = Number(rate);
+    const commissionAmount = (totalAmount * rateNum) / 100;
+
+    return {
+      rate: rateNum,
+      rateSource: source,
+      rateSourceLabel: RATE_SOURCE_LABELS[source],
+      baseAmount: totalAmount,
+      commissionAmount,
+      currency: property.currency,
+    };
   }
 
   async getOverview() {

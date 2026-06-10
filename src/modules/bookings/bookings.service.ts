@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { UpdateBookingDto } from './dto/update-booking.dto';
 import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -129,24 +130,25 @@ export class BookingsService {
         });
       }
 
-      let commissionRate = new Decimal(0);
-      if (booking.professionalProfileId) {
+      const existingCommission = await tx.commission.findUnique({ where: { bookingId: id } });
+      if (!existingCommission && booking.professionalProfileId) {
+        let commissionRate = new Decimal(0);
         const profile = await tx.professionalProfile.findUnique({ where: { id: booking.professionalProfileId } });
         if (profile) commissionRate = profile.defaultCommissionRate;
-      }
 
-      const commissionAmount = booking.totalAmount.mul(commissionRate).div(100);
-      await tx.commission.create({
-        data: {
-          bookingId: id,
-          professionalProfileId: booking.professionalProfileId,
-          rate: commissionRate,
-          baseAmount: booking.totalAmount,
-          commissionAmount,
-          currency: booking.currency,
-          status: CommissionStatus.PENDING,
-        },
-      });
+        const commissionAmount = booking.totalAmount.mul(commissionRate).div(100);
+        await tx.commission.create({
+          data: {
+            bookingId: id,
+            professionalProfileId: booking.professionalProfileId,
+            rate: commissionRate,
+            baseAmount: booking.totalAmount,
+            commissionAmount,
+            currency: booking.currency,
+            status: CommissionStatus.PENDING,
+          },
+        });
+      }
 
       return updated;
     }).then((updated) => {
@@ -194,6 +196,44 @@ export class BookingsService {
       });
 
       return updated;
+    });
+  }
+
+  async update(id: string, dto: UpdateBookingDto) {
+    const booking = await this.findOne(id);
+    if (booking.source === BookingSource.FLEX || booking.flexBookingId) {
+      throw new BadRequestException('Las reservas Flex se gestionan desde /flex-bookings');
+    }
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('No se puede editar una reserva cancelada');
+    }
+
+    const checkIn = dto.checkInDate ? new Date(dto.checkInDate) : booking.checkInDate;
+    const checkOut = dto.checkOutDate ? new Date(dto.checkOutDate) : booking.checkOutDate;
+    if (checkIn >= checkOut) {
+      throw new BadRequestException('checkOutDate must be after checkInDate');
+    }
+
+    const totalNights = Math.max(
+      1,
+      Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: {
+        ...(dto.clientName != null && { clientName: dto.clientName }),
+        ...(dto.clientEmail !== undefined && { clientEmail: dto.clientEmail || null }),
+        ...(dto.clientPhone !== undefined && { clientPhone: dto.clientPhone || null }),
+        ...(dto.notes !== undefined && { notes: dto.notes || null }),
+        ...(dto.checkInDate && { checkInDate: checkIn }),
+        ...(dto.checkOutDate && { checkOutDate: checkOut }),
+        ...((dto.checkInDate || dto.checkOutDate) && { totalNights }),
+      },
+      include: {
+        property: { select: { id: true, name: true } },
+        unit: { select: { id: true, name: true } },
+      },
     });
   }
 

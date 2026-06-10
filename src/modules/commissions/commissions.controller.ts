@@ -1,9 +1,13 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import {
+    BadRequestException, Body, Controller, Delete, Get, HttpCode, HttpStatus,
+    Param, ParseUUIDPipe, Patch, Post, Put, Query,
+} from '@nestjs/common';
 import { CommissionsService } from './commissions.service';
 import { CommissionRatesService } from './commission-rates.service';
 import { SetCommissionRateDto } from './dto/set-commission-rate.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam } from '@nestjs/swagger';
+import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('Commissions')
 @ApiBearerAuth('access-token')
@@ -32,6 +36,26 @@ export class CommissionsController {
     })
     getOverview() {
         return this.commissionRatesService.getOverview();
+    }
+
+    @Get('commission-rates/flex-preview/:propertyFlexId')
+    @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
+    @ApiOperation({
+        summary: 'Vista previa de comisión flex',
+        description: 'Calcula la comisión estimada para el embajador autenticado según las tasas vigentes y el monto total de la reserva.',
+    })
+    @ApiParam({ name: 'propertyFlexId', type: String, format: 'uuid' })
+    @ApiQuery({ name: 'totalAmount', required: true, type: Number })
+    previewFlex(
+        @Param('propertyFlexId', ParseUUIDPipe) propertyFlexId: string,
+        @Query('totalAmount') totalAmountRaw: string,
+        @CurrentUser() user: CurrentUserPayload,
+    ) {
+        const totalAmount = Number(totalAmountRaw);
+        if (!totalAmountRaw || Number.isNaN(totalAmount) || totalAmount < 0) {
+            throw new BadRequestException('totalAmount must be a non-negative number');
+        }
+        return this.commissionRatesService.previewFlexCommissionForUser(propertyFlexId, totalAmount, user);
     }
 
     @Post('commission-rates/recalculate')
