@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { ConvertToBookingDto } from './dto/convert-to-booking.dto';
@@ -8,10 +9,15 @@ import { LeadStatus, BookingStatus } from '@prisma/client';
 
 @Injectable()
 export class LeadsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(LeadsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateLeadDto, professionalProfileId?: string) {
-    return this.prisma.lead.create({
+    const lead = await this.prisma.lead.create({
       data: {
         ...dto,
         checkInDate: dto.checkInDate ? new Date(dto.checkInDate) : null,
@@ -19,6 +25,12 @@ export class LeadsService {
         professionalProfileId,
       },
     });
+
+    this.notifications.notifyNewLead(lead.id).catch((err) =>
+      this.logger.error(`notifyNewLead failed for ${lead.id}`, err),
+    );
+
+    return lead;
   }
 
   async findAll(page = 1, limit = 20, userId?: string, roles?: string[]) {

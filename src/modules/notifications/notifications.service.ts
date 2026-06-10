@@ -64,6 +64,65 @@ export class NotificationsService {
     return Promise.all(users.map((u) => this.sendToUser({ ...input, userId: u.id })));
   }
 
+  /** Notifies OPERATOR and ADMIN when a new lead is created. */
+  async notifyNewLead(leadId: string) {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        unit: { select: { name: true, property: { select: { id: true, name: true } } } },
+      },
+    });
+    if (!lead) return;
+
+    const placeName = lead.unit?.property?.name ?? lead.unit?.name ?? 'una propiedad';
+    const payload = {
+      type: NotificationType.LEAD_NEW,
+      title: 'Nuevo lead',
+      body: `${lead.clientName} consultó por ${placeName}`,
+      data: {
+        leadId: lead.id,
+        propertyId: lead.unit?.property?.id ?? null,
+        url: `/dashboard/leads/${lead.id}`,
+      },
+    };
+
+    await Promise.all([
+      this.sendToRole('OPERATOR', payload),
+      this.sendToRole('ADMIN', payload),
+    ]);
+  }
+
+  /** Notifies the professional/ambassador when their booking is confirmed. */
+  async notifyBookingConfirmed(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        unit: { select: { name: true } },
+        propertyFlex: { select: { name: true } },
+        property: { select: { name: true } },
+        professionalProfile: { select: { userId: true } },
+      },
+    });
+    if (!booking?.professionalProfile?.userId) return;
+
+    const placeName =
+      booking.unit?.name ??
+      booking.propertyFlex?.name ??
+      booking.property?.name ??
+      'tu reserva';
+
+    await this.sendToUser({
+      userId: booking.professionalProfile.userId,
+      type: NotificationType.BOOKING_CONFIRMED,
+      title: 'Reserva confirmada',
+      body: `La reserva de ${booking.clientName} en ${placeName} fue confirmada.`,
+      data: {
+        bookingId: booking.id,
+        url: '/dashboard/activity',
+      },
+    });
+  }
+
   // ── Notifications listing ─────────────────────────────────────────────────
 
   async list(userId: string, page = 1, limit = 20, onlyUnread = false) {

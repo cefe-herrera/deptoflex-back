@@ -993,6 +993,23 @@ Edita el propio perfil profesional.
 
 Solicita convertirse en embajador. Solo puede hacerse una vez.
 
+**Body:**
+```json
+{
+  "firstName": "Maria",
+  "lastName": "Gonzalez",
+  "dni": "35123456",
+  "phone": "+5493871234567",
+  "email": "maria@ejemplo.com",
+  "city": "Salta",
+  "province": "Salta",
+  "personType": "individual"
+}
+```
+
+- `email` es opcional; si no se envia, se usa el email del usuario autenticado.
+- `personType` acepta `individual`/`company` o `INDIVIDUAL`/`COMPANY`.
+
 **Respuesta `201`:** perfil actualizado con `status: PENDING` y `ambassadorRequestedAt` seteado
 
 **Errores:**

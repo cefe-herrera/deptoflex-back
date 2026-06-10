@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
@@ -15,7 +16,12 @@ const FLEX_TO_BOOKING_STATUS: Record<string, BookingStatus> = {
 
 @Injectable()
 export class FlexBookingsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(FlexBookingsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateFlexBookingDto) {
     const propertyFlex = await this.prisma.propertyFlex.findFirst({
@@ -149,8 +155,10 @@ export class FlexBookingsService {
 
   async update(id: string, dto: UpdateFlexBookingDto) {
     await this.findOne(id);
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.flexBooking.update({
+    let confirmedBookingId: string | null = null;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.flexBooking.update({
         where: { id },
         data: dto,
         include: { propertyFlex: { include: { address: true } } },
@@ -168,11 +176,22 @@ export class FlexBookingsService {
           if (dto.status === 'CANCELLED') {
             await tx.commission.updateMany({ where: { bookingId: registry.id }, data: { status: CommissionStatus.CANCELLED } });
           }
+          if (dto.status === 'CONFIRMED') {
+            confirmedBookingId = registry.id;
+          }
         }
       }
 
-      return updated;
+      return result;
     });
+
+    if (confirmedBookingId) {
+      this.notifications.notifyBookingConfirmed(confirmedBookingId).catch((err) =>
+        this.logger.error(`notifyBookingConfirmed failed for ${confirmedBookingId}`, err),
+      );
+    }
+
+    return updated;
   }
 
   async softDelete(id: string) {

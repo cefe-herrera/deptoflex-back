@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
+import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 
 @Injectable()
 export class ProfessionalsService {
@@ -55,8 +56,11 @@ export class ProfessionalsService {
     return this.prisma.professionalProfile.update({ where: { id }, data: dto });
   }
 
-  async requestAmbassador(userId: string) {
-    const profile = await this.prisma.professionalProfile.findUnique({ where: { userId } });
+  async requestAmbassador(userId: string, dto: RequestAmbassadorDto) {
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { userId },
+      include: { user: { select: { email: true } } },
+    });
     if (!profile) throw new NotFoundException('Professional profile not found');
 
     if (profile.status === 'ACTIVE') {
@@ -68,7 +72,18 @@ export class ProfessionalsService {
 
     return this.prisma.professionalProfile.update({
       where: { userId },
-      data: { ambassadorRequestedAt: new Date(), status: 'PENDING' },
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        dni: dto.dni,
+        phone: dto.phone,
+        contactEmail: dto.email ?? profile.user.email,
+        city: dto.city,
+        province: dto.province,
+        personType: dto.personType,
+        ambassadorRequestedAt: new Date(),
+        status: 'PENDING',
+      },
     });
   }
 

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ProfessionalsService } from './professionals.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
+import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MediaService } from '../media/media.service';
@@ -74,10 +75,10 @@ export class ProfessionalsController {
   @Post('me/request-ambassador')
   @ApiOperation({
     summary: 'Solicitar rol de embajador',
-    description: 'El profesional solicita ser promovido a embajador. Queda pendiente de aprobación por un ADMIN.',
+    description: 'El profesional envía sus datos (nombre, DNI, contacto, ubicación, tipo de persona) y solicita ser promovido a embajador. Los datos quedan persistidos en su perfil y la solicitud queda PENDING de aprobación por un ADMIN.',
   })
-  requestAmbassador(@CurrentUser() user: CurrentUserPayload) {
-    return this.professionalsService.requestAmbassador(user.id);
+  requestAmbassador(@CurrentUser() user: CurrentUserPayload, @Body() dto: RequestAmbassadorDto) {
+    return this.professionalsService.requestAmbassador(user.id, dto);
   }
 
   @Post('me/avatar/presign')

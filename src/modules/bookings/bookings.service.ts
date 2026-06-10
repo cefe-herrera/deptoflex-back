@@ -1,12 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { BookingStatus, CommissionStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class BookingsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(BookingsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreateBookingDto, changedById: string) {
     const checkIn = new Date(dto.checkInDate);
@@ -119,6 +125,11 @@ export class BookingsService {
         },
       });
 
+      return updated;
+    }).then((updated) => {
+      this.notifications.notifyBookingConfirmed(id).catch((err) =>
+        this.logger.error(`notifyBookingConfirmed failed for ${id}`, err),
+      );
       return updated;
     });
   }

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -19,8 +20,10 @@ import {
   ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
+import { NotificationType } from '@prisma/client';
 import { NotificationsService } from './notifications.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
+import { TestNotificationDto } from './dto/test-notification.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Notifications')
@@ -54,6 +57,33 @@ export class NotificationsController {
   })
   unreadCount(@CurrentUser() user: CurrentUserPayload) {
     return this.notifications.unreadCount(user.id).then((count) => ({ count }));
+  }
+
+  @Post('test')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Enviar notificación de prueba',
+    description:
+      'Dispara una notificación real (DB + WebSocket + push) al usuario autenticado. ADMIN puede enviar a otro userId. Útil para validar el flujo E2E.',
+  })
+  sendTest(@CurrentUser() user: CurrentUserPayload, @Body() dto: TestNotificationDto) {
+    const targetUserId = dto.userId ?? user.id;
+    const isAdmin = user.roles?.includes('ADMIN');
+
+    if (dto.userId && dto.userId !== user.id && !isAdmin) {
+      throw new ForbiddenException('Only ADMIN can send test notifications to other users');
+    }
+
+    return this.notifications.sendToUser({
+      userId: targetUserId,
+      type: dto.type ?? NotificationType.GENERIC,
+      title: dto.title ?? 'Notificación de prueba',
+      body: dto.body ?? 'Si ves esto, el sistema de notificaciones funciona correctamente.',
+      data: {
+        url: '/dashboard/notifications',
+        ...dto.data,
+      },
+    });
   }
 
   @Patch(':id/read')

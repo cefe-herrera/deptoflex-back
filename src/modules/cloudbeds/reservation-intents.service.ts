@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CloudbedsService } from './cloudbeds.service';
 import { CreateReservationIntentDto } from './dto/create-reservation-intent.dto';
 import { ConfirmReservationDto } from './dto/confirm-reservation.dto';
@@ -37,6 +38,7 @@ export class ReservationIntentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudbeds: CloudbedsService,
+    private readonly notifications: NotificationsService,
     @Inject(BOOKING_PROVIDER) private readonly provider: BookingProvider,
   ) {}
 
@@ -248,6 +250,11 @@ export class ReservationIntentsService {
     });
 
     this.logger.log(`Registered Cloudbeds booking ${booking.id} (reservation=${conf.reservationId ?? 'n/a'})`);
+
+    this.notifications.notifyBookingConfirmed(booking.id).catch((err) =>
+      this.logger.error(`notifyBookingConfirmed failed for ${booking.id}`, err),
+    );
+
     return booking;
   }
 
