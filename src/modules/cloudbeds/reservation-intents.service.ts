@@ -8,6 +8,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CloudbedsService } from './cloudbeds.service';
 import { CreateReservationIntentDto } from './dto/create-reservation-intent.dto';
 import { ConfirmReservationDto } from './dto/confirm-reservation.dto';
@@ -39,6 +40,7 @@ export class ReservationIntentsService {
     private readonly prisma: PrismaService,
     private readonly cloudbeds: CloudbedsService,
     private readonly notifications: NotificationsService,
+    private readonly commissionRates: CommissionRatesService,
     @Inject(BOOKING_PROVIDER) private readonly provider: BookingProvider,
   ) {}
 
@@ -235,12 +237,15 @@ export class ReservationIntentsService {
         data: { bookingId: created.id, toStatus: BookingStatus.CONFIRMED, reason: 'Cloudbeds confirmation' },
       });
 
-      await this.createCommission(tx, {
-        bookingId: created.id,
-        professionalProfileId,
-        baseAmount: totalAmount,
-        currency,
-      });
+      if (professionalProfileId) {
+        await this.createCommission(tx, {
+          bookingId: created.id,
+          propertyId,
+          professionalProfileId,
+          baseAmount: totalAmount,
+          currency,
+        });
+      }
 
       if (intent) {
         await tx.reservationIntent.update({ where: { id: intent.id }, data: { status: 'CONFIRMED' } });
@@ -258,16 +263,22 @@ export class ReservationIntentsService {
     return booking;
   }
 
-  /** Create a Commission for a booking using the ambassador's default rate. */
+  /** Create a Commission using the temporal rate cascade (override → property → ambassador default). */
   private async createCommission(
     tx: any,
-    args: { bookingId: string; professionalProfileId: string | null; baseAmount: Decimal; currency: string },
+    args: {
+      bookingId: string;
+      propertyId: string;
+      professionalProfileId: string;
+      baseAmount: Decimal;
+      currency: string;
+    },
   ): Promise<void> {
-    let rate = new Decimal(0);
-    if (args.professionalProfileId) {
-      const profile = await tx.professionalProfile.findUnique({ where: { id: args.professionalProfileId } });
-      if (profile) rate = profile.defaultCommissionRate;
-    }
+    const rate = await this.commissionRates.resolveTemporalRate(
+      args.propertyId,
+      args.professionalProfileId,
+      tx,
+    );
     const commissionAmount = args.baseAmount.mul(rate).div(100);
     await tx.commission.create({
       data: {

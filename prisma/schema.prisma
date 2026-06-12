@@ -28,6 +28,14 @@ enum PersonType {
   COMPANY
 }
 
+enum AmbassadorDocumentType {
+  DNI_FRONT
+  DNI_BACK
+  SELFIE
+  CUIT_CERTIFICATE
+  FOUNDING_DOCUMENT
+}
+
 enum CompanyRole {
   OWNER
   ADMIN
@@ -240,6 +248,10 @@ model ProfessionalProfile {
   city                  String?            @db.VarChar(100)
   province              String?            @db.VarChar(100)
   personType            PersonType?        @map("person_type")
+  legalName             String?            @map("legal_name") @db.VarChar(200)
+  tradeName             String?            @map("trade_name") @db.VarChar(200)
+  fiscalAddress         String?            @map("fiscal_address") @db.Text
+  realAddress           String?            @map("real_address") @db.Text
   avatarUrl             String?            @map("avatar_url") @db.Text
   bio                   String?            @db.Text
   licenseNumber         String?            @map("license_number") @db.VarChar(100)
@@ -253,12 +265,15 @@ model ProfessionalProfile {
 
   user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   companyMemberships UserCompanyMembership[]
+  ambassadorDocuments AmbassadorDocument[]
+  agencyTeamMembers   AgencyTeamMember[]     @relation("AgencyTeamMembers")
   leads              Lead[]
   bookings           Booking[]
   flexBookings       FlexBooking[]
   reservationIntents ReservationIntent[]
   commissions              Commission[]
-  flexCommissionOverrides  AmbassadorFlexCommission[]
+  flexCommissionOverrides      AmbassadorFlexCommission[]
+  propertyCommissionOverrides  AmbassadorPropertyCommission[]
 
   @@index([status])
   @@map("professional_profiles")
@@ -276,11 +291,45 @@ model CompanyProfile {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  memberships    UserCompanyMembership[]
-  properties     Property[]
-  propertyFlex   PropertyFlex[]
+  memberships       UserCompanyMembership[]
+  agencyTeamMembers AgencyTeamMember[]
+  properties        Property[]
+  propertyFlex      PropertyFlex[]
 
   @@map("company_profiles")
+}
+
+model AmbassadorDocument {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  professionalProfileId String                 @map("professional_profile_id") @db.Uuid
+  mediaFileId           String                 @map("media_file_id") @db.Uuid
+  documentType          AmbassadorDocumentType @map("document_type")
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz
+
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  mediaFile           MediaFile           @relation(fields: [mediaFileId], references: [id])
+
+  @@unique([professionalProfileId, documentType])
+  @@map("ambassador_documents")
+}
+
+model AgencyTeamMember {
+  id               String   @id @default(uuid()) @db.Uuid
+  agencyProfileId  String   @map("agency_profile_id") @db.Uuid
+  companyProfileId String?  @map("company_profile_id") @db.Uuid
+  firstName        String   @map("first_name") @db.VarChar(100)
+  lastName         String   @map("last_name") @db.VarChar(100)
+  dni              String   @db.VarChar(20)
+  phone            String   @db.VarChar(30)
+  email            String   @db.VarChar(255)
+  roleInCompany    String   @map("role_in_company") @db.VarChar(100)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  agencyProfile  ProfessionalProfile @relation("AgencyTeamMembers", fields: [agencyProfileId], references: [id], onDelete: Cascade)
+  companyProfile CompanyProfile?     @relation(fields: [companyProfileId], references: [id], onDelete: SetNull)
+
+  @@index([agencyProfileId])
+  @@map("agency_team_members")
 }
 
 model UserCompanyMembership {
@@ -314,6 +363,7 @@ model Property {
   cloudbedsBookingSlug      String? @map("cloudbeds_booking_slug") @db.VarChar(100)
   defaultCurrency           String  @default("ARS") @map("default_currency") @db.VarChar(3)
   defaultLanguage           String  @default("es") @map("default_language") @db.VarChar(5)
+  commissionRate            Decimal? @map("commission_rate") @db.Decimal(5, 2)
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -327,11 +377,28 @@ model Property {
   availabilitySnapshots AvailabilitySnapshot[]
   reservationIntents    ReservationIntent[]
   bookings              Booking[]
+  ambassadorOverrides   AmbassadorPropertyCommission[]
 
   @@index([status])
   @@index([companyId])
   @@index([deletedAt])
   @@map("properties")
+}
+
+model AmbassadorPropertyCommission {
+  id                    String   @id @default(uuid()) @db.Uuid
+  professionalProfileId String   @map("professional_profile_id") @db.Uuid
+  propertyId            String   @map("property_id") @db.Uuid
+  rate                  Decimal  @db.Decimal(5, 2)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  professionalProfile ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  property            Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([professionalProfileId, propertyId])
+  @@index([propertyId])
+  @@map("ambassador_property_commissions")
 }
 
 model PropertyAddress {
@@ -491,6 +558,7 @@ model MediaFile {
   propertyImages      PropertyImage[]
   unitImages          UnitImage[]
   propertyFlexImages  PropertyFlexImage[]
+  ambassadorDocuments AmbassadorDocument[]
 
   @@index([objectKey])
   @@index([status])
@@ -781,6 +849,28 @@ enum FlexBookingStatus {
   COMPLETED
 }
 
+enum FlexPricingPlanCode {
+  MONTH_1
+  MONTH_3
+  MONTH_6
+  YEAR_1
+  YEAR_2
+}
+
+enum FlexDepositRule {
+  THIRD_OF_MONTH
+  ONE_MONTH_RENT
+  CUSTOM
+}
+
+enum FlexEntryCommissionRule {
+  NONE
+  THIRD_FIRST_MONTH
+  HALF_FIRST_MONTH
+  SEVENTY_FIRST_MONTH
+  FULL_FIRST_MONTH
+}
+
 model PropertyFlex {
   id            String         @id @default(uuid()) @db.Uuid
   companyId     String?        @map("company_id") @db.Uuid
@@ -813,11 +903,44 @@ model PropertyFlex {
   bookings             FlexBooking[]
   registryBookings     Booking[]
   ambassadorOverrides  AmbassadorFlexCommission[]
+  pricingPlans         PropertyFlexPricingPlan[]
 
   @@index([status])
   @@index([companyId])
   @@index([deletedAt])
   @@map("property_flex")
+}
+
+model PropertyFlexPricingPlan {
+  id             String                  @id @default(uuid()) @db.Uuid
+  propertyFlexId String                  @map("property_flex_id") @db.Uuid
+  code           FlexPricingPlanCode
+  label          String                  @db.VarChar(120)
+  minMonths      Int                     @map("min_months") @db.SmallInt
+  maxMonths      Int?                    @map("max_months") @db.SmallInt
+  monthlyRent    Decimal                 @map("monthly_rent") @db.Decimal(10, 2)
+  currency       String                  @default("ARS") @db.VarChar(3)
+
+  rentIncludesExpenses  Boolean            @default(false) @map("rent_includes_expenses")
+  rentIncludesUtilities Boolean            @default(false) @map("rent_includes_utilities")
+  includesLinens        Boolean            @default(false) @map("includes_linens")
+
+  depositRule           FlexDepositRule          @default(THIRD_OF_MONTH) @map("deposit_rule")
+  customDepositAmount   Decimal?                 @map("custom_deposit_amount") @db.Decimal(10, 2)
+  entryCommissionRule   FlexEntryCommissionRule  @default(NONE) @map("entry_commission_rule")
+
+  conditionsText String?  @map("conditions_text") @db.Text
+  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  propertyFlex PropertyFlex  @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+  bookings     FlexBooking[]
+
+  @@unique([propertyFlexId, code])
+  @@index([propertyFlexId, isActive])
+  @@map("property_flex_pricing_plans")
 }
 
 model AmbassadorFlexCommission {
@@ -895,20 +1018,25 @@ model FlexBooking {
   endDate               DateTime          @map("end_date") @db.Date
   totalMonths           Int               @map("total_months") @db.SmallInt
   monthlyAmount         Decimal           @map("monthly_amount") @db.Decimal(10, 2)
-  totalAmount           Decimal           @map("total_amount") @db.Decimal(10, 2)
-  depositAmount         Decimal?          @map("deposit_amount") @db.Decimal(10, 2)
-  currency              String            @default("ARS") @db.VarChar(3)
-  status                FlexBookingStatus @default(PENDING)
+  totalAmount           Decimal               @map("total_amount") @db.Decimal(10, 2)
+  depositAmount         Decimal?              @map("deposit_amount") @db.Decimal(10, 2)
+  pricingPlanId         String?               @map("pricing_plan_id") @db.Uuid
+  planCode              FlexPricingPlanCode?  @map("plan_code")
+  entryCommissionAmount Decimal?              @map("entry_commission_amount") @db.Decimal(10, 2)
+  currency              String                @default("ARS") @db.VarChar(3)
+  status                FlexBookingStatus     @default(PENDING)
   notes                 String?           @db.Text
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt             DateTime?         @map("deleted_at") @db.Timestamptz
 
-  propertyFlex        PropertyFlex         @relation(fields: [propertyFlexId], references: [id])
-  professionalProfile ProfessionalProfile? @relation(fields: [professionalProfileId], references: [id])
+  propertyFlex        PropertyFlex              @relation(fields: [propertyFlexId], references: [id])
+  professionalProfile ProfessionalProfile?      @relation(fields: [professionalProfileId], references: [id])
+  pricingPlan         PropertyFlexPricingPlan?  @relation(fields: [pricingPlanId], references: [id])
   booking             Booking?
 
   @@index([propertyFlexId, startDate, endDate])
+  @@index([pricingPlanId])
   @@index([status])
   @@index([professionalProfileId])
   @@index([deletedAt])

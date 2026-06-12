@@ -4,6 +4,7 @@ import { Transform } from 'class-transformer';
 export class CreateFlexBookingDto {
   @IsUUID() propertyFlexId: string;
   @IsOptional() @IsUUID() professionalProfileId?: string;
+  @IsOptional() @IsUUID() pricingPlanId?: string;
 
   @IsString() @MaxLength(200)
   @Transform(({ value }) => value?.trim())

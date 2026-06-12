@@ -2,8 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { R2Service } from '../r2/r2.service';
 import { PresignUploadDto } from './dto/presign-upload.dto';
+import { PresignAmbassadorDocumentDto } from './dto/presign-ambassador-document.dto';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
-import { MediaStatus } from '@prisma/client';
+import { AmbassadorDocumentType, MediaStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
@@ -44,6 +45,35 @@ export class MediaService {
       });
       await tx.mediaFile.update({ where: { id: mediaFile.id }, data: { status: MediaStatus.CONFIRMED, confirmedAt: new Date() } });
       return image;
+    });
+  }
+
+  async updatePropertyFlexImage(
+    propertyFlexId: string,
+    imageId: string,
+    data: { isPrimary?: boolean; caption?: string; sortOrder?: number },
+  ) {
+    const image = await this.prisma.propertyFlexImage.findFirst({
+      where: { id: imageId, propertyFlexId },
+    });
+    if (!image) throw new NotFoundException('Image not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      if (data.isPrimary) {
+        await tx.propertyFlexImage.updateMany({
+          where: { propertyFlexId },
+          data: { isPrimary: false },
+        });
+      }
+      return tx.propertyFlexImage.update({
+        where: { id: imageId },
+        data: {
+          ...(data.isPrimary != null && { isPrimary: data.isPrimary }),
+          ...(data.caption != null && { caption: data.caption }),
+          ...(data.sortOrder != null && { sortOrder: data.sortOrder }),
+        },
+        include: { mediaFile: true },
+      });
     });
   }
 
@@ -121,6 +151,49 @@ export class MediaService {
     return this.createPresign('professionals', profileId, dto, userId);
   }
 
+  async presignAmbassadorDocument(
+    profileId: string,
+    dto: PresignAmbassadorDocumentDto,
+    userId: string,
+  ) {
+    await this.assertProfessionalExists(profileId);
+    return this.createPresign('professionals', profileId, dto, userId);
+  }
+
+  async ensureUploaded(mediaFileId: string, uploadedById: string) {
+    await this.resolveMediaFileForUser(mediaFileId, uploadedById);
+  }
+
+  async attachAmbassadorDocuments(
+    profileId: string,
+    uploadedById: string,
+    docs: { mediaFileId: string; documentType: AmbassadorDocumentType }[],
+  ) {
+    for (const doc of docs) {
+      const mediaFile = await this.resolveMediaFileForUser(doc.mediaFileId, uploadedById);
+      await this.prisma.$transaction([
+        this.prisma.mediaFile.update({
+          where: { id: mediaFile.id },
+          data: { status: MediaStatus.CONFIRMED, confirmedAt: new Date() },
+        }),
+        this.prisma.ambassadorDocument.upsert({
+          where: {
+            professionalProfileId_documentType: {
+              professionalProfileId: profileId,
+              documentType: doc.documentType,
+            },
+          },
+          create: {
+            professionalProfileId: profileId,
+            mediaFileId: mediaFile.id,
+            documentType: doc.documentType,
+          },
+          update: { mediaFileId: mediaFile.id },
+        }),
+      ]);
+    }
+  }
+
   async confirmAvatarForProfessional(profileId: string, dto: ConfirmUploadDto) {
     const mediaFile = await this.resolveMediaFile(dto.mediaFileId);
     const url = mediaFile.url;
@@ -170,13 +243,27 @@ export class MediaService {
   }
 
   private async resolveMediaFile(mediaFileId: string) {
+    return this.resolveMediaFileForUser(mediaFileId);
+  }
+
+  private async resolveMediaFileForUser(mediaFileId: string, uploadedById?: string) {
     const file = await this.prisma.mediaFile.findUnique({ where: { id: mediaFileId } });
     if (!file || file.status !== MediaStatus.PENDING) {
       throw new NotFoundException('MediaFile not found or already processed');
     }
-    const exists = await this.r2.objectExists(file.objectKey);
-    if (!exists) throw new BadRequestException('File not yet uploaded to storage');
+    if (uploadedById && file.uploadedById !== uploadedById) {
+      throw new BadRequestException('MediaFile does not belong to the current user');
+    }
+    await this.waitForObjectInStorage(file.objectKey);
     return file;
+  }
+
+  private async waitForObjectInStorage(objectKey: string, attempts = 8, delayMs = 400) {
+    for (let i = 0; i < attempts; i++) {
+      if (await this.r2.objectExists(objectKey)) return;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    throw new BadRequestException('File not yet uploaded to storage');
   }
 
   private async assertPropertyExists(id: string) {

@@ -2,11 +2,12 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
+import { FlexPricingService } from '../property-flex/flex-pricing.service';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
-import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
+import { BookingSource, BookingStatus, CommissionStatus, FlexPricingPlanCode } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 
 const FLEX_TO_BOOKING_STATUS: Record<string, BookingStatus> = {
@@ -24,6 +25,7 @@ export class FlexBookingsService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private commissionRates: CommissionRatesService,
+    private flexPricing: FlexPricingService,
   ) {}
 
   async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
@@ -51,8 +53,17 @@ export class FlexBookingsService {
       1,
       Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
     );
-    const totalAmount = new Decimal(dto.totalAmount);
-    const currency = dto.currency ?? 'ARS';
+
+    const quote = await this.flexPricing.quote(dto.propertyFlexId, dto.totalMonths, dto.pricingPlanId);
+    const monthlyAmount = quote.monthlyRent;
+    const totalAmount = new Decimal(quote.totalAmount);
+    const depositAmount = quote.depositAmount;
+    const currency = quote.currency ?? dto.currency ?? 'ARS';
+
+    if (Math.abs(Number(dto.monthlyAmount) - monthlyAmount) > 1
+      || Math.abs(Number(dto.totalAmount) - quote.totalAmount) > 1) {
+      throw new BadRequestException('Los montos no coinciden con el plan de precios vigente');
+    }
 
     const isStaff = user?.roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
     let professionalProfileId = dto.professionalProfileId ?? null;
@@ -75,13 +86,22 @@ export class FlexBookingsService {
     const { flexBooking, bookingId } = await this.prisma.$transaction(async (tx) => {
       const flexBooking = await tx.flexBooking.create({
         data: {
-          ...dto,
+          propertyFlexId: dto.propertyFlexId,
           professionalProfileId,
+          clientName: dto.clientName,
+          clientEmail: dto.clientEmail,
+          clientPhone: dto.clientPhone,
           startDate: start,
           endDate: end,
-          monthlyAmount: String(dto.monthlyAmount),
-          totalAmount: String(dto.totalAmount),
-          ...(dto.depositAmount != null && { depositAmount: String(dto.depositAmount) }),
+          totalMonths: dto.totalMonths,
+          monthlyAmount: String(monthlyAmount),
+          totalAmount: String(quote.totalAmount),
+          depositAmount: String(depositAmount),
+          pricingPlanId: quote.pricingPlanId,
+          ...(quote.planCode && { planCode: quote.planCode as FlexPricingPlanCode }),
+          entryCommissionAmount: String(quote.entryCommissionAmount),
+          currency,
+          notes: dto.notes,
         },
         include: { propertyFlex: { include: { address: true } } },
       });

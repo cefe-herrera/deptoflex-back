@@ -3,12 +3,16 @@ import {
   Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { PropertyFlexService } from './property-flex.service';
+import { FlexPricingService } from './flex-pricing.service';
 import { CreatePropertyFlexDto } from './dto/create-property-flex.dto';
 import { UpdatePropertyFlexDto } from './dto/update-property-flex.dto';
 import { QueryPropertyFlexDto } from './dto/query-property-flex.dto';
+import { CreatePricingPlanDto } from './dto/create-pricing-plan.dto';
+import { UpdatePricingPlanDto } from './dto/update-pricing-plan.dto';
 import { MediaService } from '../media/media.service';
 import { PresignUploadDto } from '../media/dto/presign-upload.dto';
 import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
+import { UpdatePropertyFlexImageDto } from '../media/dto/update-property-flex-image.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
@@ -19,6 +23,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestj
 export class PropertyFlexController {
   constructor(
     private propertyFlexService: PropertyFlexService,
+    private flexPricingService: FlexPricingService,
     private mediaService: MediaService,
   ) {}
 
@@ -72,6 +77,62 @@ export class PropertyFlexController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.propertyFlexService.softDelete(id);
+  }
+
+  @Get(':id/pricing-plans')
+  @ApiOperation({ summary: 'Listar planes de precios de una propiedad flex' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({ name: 'activeOnly', required: false, type: Boolean })
+  listPricingPlans(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('activeOnly') activeOnly?: string,
+  ) {
+    return this.flexPricingService.listPlans(id, activeOnly === 'true');
+  }
+
+  @Get(':id/pricing-quote')
+  @ApiOperation({ summary: 'Cotizar reserva flex según plan y duración' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({ name: 'totalMonths', required: true, type: Number })
+  @ApiQuery({ name: 'pricingPlanId', required: false, type: String })
+  pricingQuote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('totalMonths') totalMonths: string,
+    @Query('pricingPlanId') pricingPlanId?: string,
+  ) {
+    return this.flexPricingService.quote(id, +totalMonths, pricingPlanId);
+  }
+
+  @Post(':id/pricing-plans')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({ summary: 'Crear plan de precios para propiedad flex' })
+  createPricingPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreatePricingPlanDto,
+  ) {
+    return this.flexPricingService.createPlan(id, dto);
+  }
+
+  @Patch(':id/pricing-plans/:planId')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({ summary: 'Actualizar plan de precios' })
+  updatePricingPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('planId', ParseUUIDPipe) planId: string,
+    @Body() dto: UpdatePricingPlanDto,
+  ) {
+    return this.flexPricingService.updatePlan(id, planId, dto);
+  }
+
+  @Delete(':id/pricing-plans/:planId')
+  @Roles('ADMIN', 'OPERATOR')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Eliminar plan de precios' })
+  deletePricingPlan(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('planId', ParseUUIDPipe) planId: string,
+  ) {
+    return this.flexPricingService.deletePlan(id, planId);
   }
 
   @Get(':id/booked-periods')
@@ -159,6 +220,22 @@ export class PropertyFlexController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   confirmImage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfirmUploadDto) {
     return this.mediaService.confirmForPropertyFlex(id, dto);
+  }
+
+  @Patch(':id/images/:imageId')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Actualizar imagen de propiedad flex',
+    description: 'Permite marcar una imagen como principal o actualizar caption/orden.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiParam({ name: 'imageId', type: String, format: 'uuid' })
+  updateImage(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Body() dto: UpdatePropertyFlexImageDto,
+  ) {
+    return this.mediaService.updatePropertyFlexImage(id, imageId, dto);
   }
 
   @Delete(':id/images/:imageId')

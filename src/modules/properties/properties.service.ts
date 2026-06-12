@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { QueryPropertiesDto } from './dto/query-properties.dto';
@@ -7,7 +8,10 @@ import { PropertyStatus } from '@prisma/client';
 
 @Injectable()
 export class PropertiesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private commissionRates: CommissionRatesService,
+  ) {}
 
   async create(dto: CreatePropertyDto) {
     const { address, ...rest } = dto;
@@ -66,15 +70,22 @@ export class PropertiesService {
 
   async update(id: string, dto: UpdatePropertyDto) {
     await this.findOne(id);
-    const { address, ...rest } = dto;
-    return this.prisma.property.update({
+    const { address, commissionRate, ...rest } = dto;
+    const updated = await this.prisma.property.update({
       where: { id },
       data: {
         ...rest,
+        ...(commissionRate != null && { commissionRate: String(commissionRate) }),
         ...(address && { address: { upsert: { create: address, update: address } } }),
       },
       include: { address: true },
     });
+
+    if (commissionRate != null) {
+      await this.commissionRates.recalculateForTemporalProperty(id);
+    }
+
+    return updated;
   }
 
   async softDelete(id: string) {

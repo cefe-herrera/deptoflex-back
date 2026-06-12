@@ -8,6 +8,7 @@ import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/cu
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MediaService } from '../media/media.service';
 import { PresignUploadDto } from '../media/dto/presign-upload.dto';
+import { PresignAmbassadorDocumentDto } from '../media/dto/presign-ambassador-document.dto';
 import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 
@@ -79,6 +80,20 @@ export class ProfessionalsController {
   })
   requestAmbassador(@CurrentUser() user: CurrentUserPayload, @Body() dto: RequestAmbassadorDto) {
     return this.professionalsService.requestAmbassador(user.id, dto);
+  }
+
+  @Post('me/ambassador-documents/presign')
+  @ApiOperation({
+    summary: 'Presign de documentación de embajador',
+    description: 'Genera una URL prefirmada para subir documentación del registro de embajador (PDF, PNG o JPG).',
+  })
+  presignAmbassadorDocument(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: PresignAmbassadorDocumentDto,
+  ) {
+    return this.professionalsService.getProfileIdByUserId(user.id).then((profileId) =>
+      this.mediaService.presignAmbassadorDocument(profileId, dto, user.id),
+    );
   }
 
   @Post('me/avatar/presign')

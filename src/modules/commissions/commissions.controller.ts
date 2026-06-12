@@ -66,7 +66,27 @@ export class CommissionsController {
         description: 'Vuelve a calcular rate y monto de todas las comisiones PENDING de reservas flex según las tasas vigentes.',
     })
     recalculateAll() {
-        return this.commissionRatesService.recalculateAllPendingFlex();
+        return this.commissionRatesService.recalculateAllPending();
+    }
+
+    @Get('commission-rates/temporal-preview/:propertyId')
+    @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
+    @ApiOperation({
+        summary: 'Vista previa de comisión temporal',
+        description: 'Calcula la comisión estimada para el embajador autenticado en una propiedad temporal (Cloudbeds).',
+    })
+    @ApiParam({ name: 'propertyId', type: String, format: 'uuid' })
+    @ApiQuery({ name: 'totalAmount', required: true, type: Number })
+    previewTemporal(
+        @Param('propertyId', ParseUUIDPipe) propertyId: string,
+        @Query('totalAmount') totalAmountRaw: string,
+        @CurrentUser() user: CurrentUserPayload,
+    ) {
+        const totalAmount = Number(totalAmountRaw);
+        if (!totalAmountRaw || Number.isNaN(totalAmount) || totalAmount < 0) {
+            throw new BadRequestException('totalAmount must be a non-negative number');
+        }
+        return this.commissionRatesService.previewTemporalCommissionForUser(propertyId, totalAmount, user);
     }
 
     @Patch('commission-rates/flex-property/:propertyFlexId')
@@ -108,5 +128,45 @@ export class CommissionsController {
         @Param('profileId', ParseUUIDPipe) profileId: string,
     ) {
         return this.commissionRatesService.deleteAmbassadorOverride(propertyFlexId, profileId);
+    }
+
+    @Patch('commission-rates/temporal-property/:propertyId')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Tasa de comisión por propiedad temporal',
+        description: 'Define el porcentaje de comisión por defecto para una propiedad temporal. Recalcula comisiones pendientes.',
+    })
+    @ApiParam({ name: 'propertyId', type: String, format: 'uuid' })
+    setTemporalPropertyRate(
+        @Param('propertyId', ParseUUIDPipe) propertyId: string,
+        @Body() dto: SetCommissionRateDto,
+    ) {
+        return this.commissionRatesService.setPropertyTemporalRate(propertyId, dto.rate);
+    }
+
+    @Put('commission-rates/temporal-property/:propertyId/ambassador/:profileId')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Override embajador × propiedad temporal',
+        description: 'Define un porcentaje específico para un embajador en una propiedad temporal.',
+    })
+    upsertTemporalOverride(
+        @Param('propertyId', ParseUUIDPipe) propertyId: string,
+        @Param('profileId', ParseUUIDPipe) profileId: string,
+        @Body() dto: SetCommissionRateDto,
+    ) {
+        return this.commissionRatesService.upsertAmbassadorPropertyOverride(propertyId, profileId, dto.rate);
+    }
+
+    @Delete('commission-rates/temporal-property/:propertyId/ambassador/:profileId')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Eliminar override embajador × propiedad temporal',
+    })
+    deleteTemporalOverride(
+        @Param('propertyId', ParseUUIDPipe) propertyId: string,
+        @Param('profileId', ParseUUIDPipe) profileId: string,
+    ) {
+        return this.commissionRatesService.deleteAmbassadorPropertyOverride(propertyId, profileId);
     }
 }

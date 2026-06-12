@@ -35,6 +35,8 @@ export class CreatePropertyDto {
   @IsOptional() @IsString() @MaxLength(3) defaultCurrency?: string;
   @IsOptional() @IsString() @MaxLength(5) defaultLanguage?: string;
 
+  @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => CreatePropertyAddressDto)

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
@@ -13,6 +14,7 @@ export class BookingsService {
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService,
+    private commissionRates: CommissionRatesService,
   ) {}
 
   async create(dto: CreateBookingDto, changedById: string) {
@@ -131,10 +133,12 @@ export class BookingsService {
       }
 
       const existingCommission = await tx.commission.findUnique({ where: { bookingId: id } });
-      if (!existingCommission && booking.professionalProfileId) {
-        let commissionRate = new Decimal(0);
-        const profile = await tx.professionalProfile.findUnique({ where: { id: booking.professionalProfileId } });
-        if (profile) commissionRate = profile.defaultCommissionRate;
+      if (!existingCommission && booking.professionalProfileId && booking.propertyId) {
+        const commissionRate = await this.commissionRates.resolveTemporalRate(
+          booking.propertyId,
+          booking.professionalProfileId,
+          tx,
+        );
 
         const commissionAmount = booking.totalAmount.mul(commissionRate).div(100);
         await tx.commission.create({

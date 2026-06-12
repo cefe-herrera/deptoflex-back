@@ -50,6 +50,7 @@ export class PropertyFlexService {
         include: {
           address: true,
           images: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
+          pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -66,6 +67,7 @@ export class PropertyFlexService {
         address: true,
         amenities: { include: { amenity: true } },
         images: { include: { mediaFile: true }, orderBy: { sortOrder: 'asc' } },
+        pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
       },
     });
     if (!propertyFlex) throw new NotFoundException('PropertyFlex not found');

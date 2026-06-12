@@ -6,9 +6,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 type DbClient = PrismaService | Prisma.TransactionClient;
 
-export type FlexCommissionRateSource = 'OVERRIDE' | 'PROPERTY' | 'AMBASSADOR_DEFAULT' | 'ZERO';
+export type CommissionRateSource = 'OVERRIDE' | 'PROPERTY' | 'AMBASSADOR_DEFAULT' | 'ZERO';
+export type FlexCommissionRateSource = CommissionRateSource;
 
-const RATE_SOURCE_LABELS: Record<FlexCommissionRateSource, string> = {
+const RATE_SOURCE_LABELS: Record<CommissionRateSource, string> = {
   OVERRIDE: 'Acuerdo especial para vos en esta propiedad',
   PROPERTY: 'Tasa de la propiedad',
   AMBASSADOR_DEFAULT: 'Tu tasa por defecto',
@@ -99,10 +100,95 @@ export class CommissionRatesService {
     };
   }
 
+  async resolveTemporalRate(
+    propertyId: string,
+    professionalProfileId: string | null | undefined,
+    db: DbClient = this.prisma,
+  ): Promise<Decimal> {
+    const { rate } = await this.resolveTemporalRateWithSource(propertyId, professionalProfileId, db);
+    return rate;
+  }
+
+  async resolveTemporalRateWithSource(
+    propertyId: string,
+    professionalProfileId: string | null | undefined,
+    db: DbClient = this.prisma,
+  ): Promise<{ rate: Decimal; source: CommissionRateSource }> {
+    if (professionalProfileId) {
+      const override = await db.ambassadorPropertyCommission.findUnique({
+        where: {
+          professionalProfileId_propertyId: {
+            professionalProfileId,
+            propertyId,
+          },
+        },
+      });
+      if (override) return { rate: override.rate, source: 'OVERRIDE' };
+    }
+
+    const property = await db.property.findFirst({
+      where: { id: propertyId, deletedAt: null },
+      select: { commissionRate: true },
+    });
+    if (property?.commissionRate != null) {
+      return { rate: property.commissionRate, source: 'PROPERTY' };
+    }
+
+    if (professionalProfileId) {
+      const profile = await db.professionalProfile.findUnique({
+        where: { id: professionalProfileId },
+        select: { defaultCommissionRate: true },
+      });
+      if (profile && !profile.defaultCommissionRate.isZero()) {
+        return { rate: profile.defaultCommissionRate, source: 'AMBASSADOR_DEFAULT' };
+      }
+    }
+
+    return { rate: new Decimal(0), source: 'ZERO' };
+  }
+
+  async previewTemporalCommissionForUser(
+    propertyId: string,
+    totalAmount: number,
+    user: CurrentUserPayload,
+  ) {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, deletedAt: null },
+      select: { defaultCurrency: true },
+    });
+    if (!property) throw new NotFoundException('Property not found');
+
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new ForbiddenException('Necesitás un perfil profesional para ver la comisión');
+    }
+
+    const { rate, source } = await this.resolveTemporalRateWithSource(propertyId, profile.id);
+    const rateNum = Number(rate);
+    const commissionAmount = (totalAmount * rateNum) / 100;
+
+    return {
+      rate: rateNum,
+      rateSource: source,
+      rateSourceLabel: RATE_SOURCE_LABELS[source],
+      baseAmount: totalAmount,
+      commissionAmount,
+      currency: property.defaultCurrency,
+    };
+  }
+
   async getOverview() {
-    const [properties, ambassadors, overrides] = await Promise.all([
+    const [properties, temporalProperties, ambassadors, overrides, temporalOverrides] = await Promise.all([
       this.prisma.propertyFlex.findMany({
         where: { deletedAt: null },
+        select: { id: true, name: true, status: true, commissionRate: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.property.findMany({
+        where: { deletedAt: null, cloudbedsWidgetPropertyId: { not: null } },
         select: { id: true, name: true, status: true, commissionRate: true },
         orderBy: { name: 'asc' },
       }),
@@ -125,15 +211,31 @@ export class CommissionRatesService {
         },
         orderBy: { updatedAt: 'desc' },
       }),
+      this.prisma.ambassadorPropertyCommission.findMany({
+        include: {
+          property: { select: { id: true, name: true } },
+          professionalProfile: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
     ]);
 
     return {
       properties,
+      temporalProperties,
       ambassadors,
       overrides: overrides.map((o) => ({
         id: o.id,
         propertyFlexId: o.propertyFlexId,
         propertyName: o.propertyFlex.name,
+        professionalProfileId: o.professionalProfileId,
+        ambassadorName: `${o.professionalProfile.firstName} ${o.professionalProfile.lastName}`.trim(),
+        rate: o.rate,
+      })),
+      temporalOverrides: temporalOverrides.map((o) => ({
+        id: o.id,
+        propertyId: o.propertyId,
+        propertyName: o.property.name,
         professionalProfileId: o.professionalProfileId,
         ambassadorName: `${o.professionalProfile.firstName} ${o.professionalProfile.lastName}`.trim(),
         rate: o.rate,
@@ -208,10 +310,87 @@ export class CommissionRatesService {
     }
   }
 
-  async recalculateForAmbassador(professionalProfileId: string) {
-    const bookings = await this.pendingFlexBookings({ professionalProfileId });
+  async setPropertyTemporalRate(propertyId: string, rate: number) {
+    const property = await this.prisma.property.findFirst({
+      where: { id: propertyId, deletedAt: null },
+    });
+    if (!property) throw new NotFoundException('Property not found');
+
+    const updated = await this.prisma.property.update({
+      where: { id: propertyId },
+      data: { commissionRate: String(rate) },
+      select: { id: true, name: true, commissionRate: true },
+    });
+
+    await this.recalculateForTemporalProperty(propertyId);
+    return updated;
+  }
+
+  async upsertAmbassadorPropertyOverride(propertyId: string, professionalProfileId: string, rate: number) {
+    const [property, profile] = await Promise.all([
+      this.prisma.property.findFirst({ where: { id: propertyId, deletedAt: null } }),
+      this.prisma.professionalProfile.findUnique({ where: { id: professionalProfileId } }),
+    ]);
+    if (!property) throw new NotFoundException('Property not found');
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    const override = await this.prisma.ambassadorPropertyCommission.upsert({
+      where: {
+        professionalProfileId_propertyId: { professionalProfileId, propertyId },
+      },
+      create: {
+        professionalProfileId,
+        propertyId,
+        rate: String(rate),
+      },
+      update: { rate: String(rate) },
+      include: {
+        property: { select: { name: true } },
+        professionalProfile: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    await this.recalculateForTemporalOverride(propertyId, professionalProfileId);
+    return override;
+  }
+
+  async deleteAmbassadorPropertyOverride(propertyId: string, professionalProfileId: string) {
+    const existing = await this.prisma.ambassadorPropertyCommission.findUnique({
+      where: {
+        professionalProfileId_propertyId: { professionalProfileId, propertyId },
+      },
+    });
+    if (!existing) throw new NotFoundException('Commission override not found');
+
+    await this.prisma.ambassadorPropertyCommission.delete({ where: { id: existing.id } });
+    await this.recalculateForTemporalOverride(propertyId, professionalProfileId);
+    return { message: 'Override removed' };
+  }
+
+  async recalculateForTemporalProperty(propertyId: string) {
+    const bookings = await this.pendingTemporalBookings({ propertyId });
     for (const booking of bookings) {
+      await this.recalculateTemporalBookingCommission(booking);
+    }
+  }
+
+  async recalculateForTemporalOverride(propertyId: string, professionalProfileId: string) {
+    const bookings = await this.pendingTemporalBookings({ propertyId, professionalProfileId });
+    for (const booking of bookings) {
+      await this.recalculateTemporalBookingCommission(booking);
+    }
+  }
+
+  async recalculateForAmbassador(professionalProfileId: string) {
+    const [flexBookings, temporalBookings] = await Promise.all([
+      this.pendingFlexBookings({ professionalProfileId }),
+      this.pendingTemporalBookings({ professionalProfileId }),
+    ]);
+    for (const booking of flexBookings) {
       await this.recalculateBookingCommission(booking);
+    }
+    for (const booking of temporalBookings) {
+      await this.recalculateTemporalBookingCommission(booking);
     }
   }
 
@@ -223,11 +402,26 @@ export class CommissionRatesService {
   }
 
   async recalculateAllPendingFlex(): Promise<{ recalculated: number }> {
-    const bookings = await this.pendingFlexBookings({});
-    for (const booking of bookings) {
+    const result = await this.recalculateAllPending();
+    return { recalculated: result.recalculated };
+  }
+
+  async recalculateAllPending(): Promise<{ recalculated: number; flex: number; temporal: number }> {
+    const [flexBookings, temporalBookings] = await Promise.all([
+      this.pendingFlexBookings({}),
+      this.pendingTemporalBookings({}),
+    ]);
+    for (const booking of flexBookings) {
       await this.recalculateBookingCommission(booking);
     }
-    return { recalculated: bookings.length };
+    for (const booking of temporalBookings) {
+      await this.recalculateTemporalBookingCommission(booking);
+    }
+    return {
+      recalculated: flexBookings.length + temporalBookings.length,
+      flex: flexBookings.length,
+      temporal: temporalBookings.length,
+    };
   }
 
   private async pendingFlexBookings(where: {
@@ -249,6 +443,27 @@ export class CommissionRatesService {
     });
   }
 
+  private async pendingTemporalBookings(where: {
+    propertyId?: string;
+    professionalProfileId?: string;
+  }) {
+    return this.prisma.booking.findMany({
+      where: {
+        propertyId: { not: null },
+        propertyFlexId: null,
+        source: { in: ['CLOUDBEDS', 'DIRECT'] },
+        ...where,
+        commission: { status: CommissionStatus.PENDING },
+      },
+      select: {
+        id: true,
+        propertyId: true,
+        professionalProfileId: true,
+        totalAmount: true,
+      },
+    });
+  }
+
   private async recalculateBookingCommission(booking: {
     id: string;
     propertyFlexId: string | null;
@@ -258,6 +473,27 @@ export class CommissionRatesService {
     if (!booking.propertyFlexId) return;
 
     const rate = await this.resolveFlexRate(booking.propertyFlexId, booking.professionalProfileId);
+    const commissionAmount = booking.totalAmount.mul(rate).div(100);
+
+    await this.prisma.commission.updateMany({
+      where: { bookingId: booking.id, status: CommissionStatus.PENDING },
+      data: {
+        rate,
+        baseAmount: booking.totalAmount,
+        commissionAmount,
+      },
+    });
+  }
+
+  private async recalculateTemporalBookingCommission(booking: {
+    id: string;
+    propertyId: string | null;
+    professionalProfileId: string | null;
+    totalAmount: Decimal;
+  }) {
+    if (!booking.propertyId) return;
+
+    const rate = await this.resolveTemporalRate(booking.propertyId, booking.professionalProfileId);
     const commissionAmount = booking.totalAmount.mul(rate).div(100);
 
     await this.prisma.commission.updateMany({

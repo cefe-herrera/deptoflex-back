@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { CommissionsModule } from '../commissions/commissions.module';
 import { CloudbedsController } from './cloudbeds.controller';
 import { CloudbedsService } from './cloudbeds.service';
 import { ReservationIntentsService } from './reservation-intents.service';
@@ -16,7 +17,7 @@ import { BOOKING_PROVIDER } from './providers/booking-provider.interface';
  * without touching consumers.
  */
 @Module({
-  imports: [PrismaModule, NotificationsModule],
+  imports: [PrismaModule, NotificationsModule, CommissionsModule],
   controllers: [CloudbedsController],
   providers: [
     CloudbedsService,
