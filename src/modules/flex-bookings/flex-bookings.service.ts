@@ -1,8 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { FlexPricingService } from '../property-flex/flex-pricing.service';
+import { BookingsService } from '../bookings/bookings.service';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
@@ -26,6 +27,8 @@ export class FlexBookingsService {
     private notifications: NotificationsService,
     private commissionRates: CommissionRatesService,
     private flexPricing: FlexPricingService,
+    @Inject(forwardRef(() => BookingsService))
+    private bookingsService: BookingsService,
   ) {}
 
   async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
@@ -197,9 +200,10 @@ export class FlexBookingsService {
     return booking;
   }
 
-  async update(id: string, dto: UpdateFlexBookingDto) {
+  async update(id: string, dto: UpdateFlexBookingDto, changedById?: string) {
     const existing = await this.findOne(id);
     let confirmedBookingId: string | null = null;
+    const isCancellation = dto.status === 'CANCELLED';
 
     const start = dto.startDate ? new Date(dto.startDate) : existing.startDate;
     const end = dto.endDate ? new Date(dto.endDate) : existing.endDate;
@@ -224,7 +228,7 @@ export class FlexBookingsService {
     const totalAmount = dto.totalAmount ?? monthlyAmount * totalMonths;
 
     const flexData: Record<string, unknown> = {};
-    if (dto.status) flexData.status = dto.status;
+    if (dto.status && !isCancellation) flexData.status = dto.status;
     if (dto.notes !== undefined) flexData.notes = dto.notes;
     if (dto.clientName) flexData.clientName = dto.clientName;
     if (dto.clientEmail !== undefined) flexData.clientEmail = dto.clientEmail || null;
@@ -287,7 +291,7 @@ export class FlexBookingsService {
         });
       }
 
-      if (dto.status) {
+      if (dto.status && !isCancellation) {
         const toStatus = FLEX_TO_BOOKING_STATUS[dto.status];
         if (registry.status !== toStatus) {
           await tx.booking.update({ where: { id: registry.id }, data: { status: toStatus } });
@@ -297,14 +301,9 @@ export class FlexBookingsService {
               fromStatus: registry.status,
               toStatus,
               reason: 'Flex booking status update',
+              changedById,
             },
           });
-          if (dto.status === 'CANCELLED') {
-            await tx.commission.updateMany({
-              where: { bookingId: registry.id },
-              data: { status: CommissionStatus.CANCELLED },
-            });
-          }
           if (dto.status === 'CONFIRMED') {
             confirmedBookingId = registry.id;
           }
@@ -313,6 +312,18 @@ export class FlexBookingsService {
 
       return result;
     });
+
+    if (isCancellation) {
+      const registry = await this.prisma.booking.findUnique({ where: { flexBookingId: id } });
+      if (registry && registry.status !== BookingStatus.CANCELLED) {
+        await this.bookingsService.executeCancellation(
+          registry.id,
+          dto.notes ?? 'Flex booking cancelled',
+          changedById ?? 'system',
+        );
+      }
+      return this.findOne(id);
+    }
 
     if (confirmedBookingId) {
       this.notifications.notifyBookingConfirmed(confirmedBookingId).catch((err) =>
@@ -323,25 +334,25 @@ export class FlexBookingsService {
     return updated;
   }
 
-  async softDelete(id: string) {
+  async softDelete(id: string, changedById?: string) {
     await this.findOne(id);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.flexBooking.update({
-        where: { id },
-        data: { deletedAt: new Date(), status: 'CANCELLED' },
-      });
-
-      const registry = await tx.booking.findUnique({ where: { flexBookingId: id } });
-      if (registry) {
-        await tx.booking.update({
-          where: { id: registry.id },
-          data: { status: BookingStatus.CANCELLED, deletedAt: new Date() },
-        });
-        await tx.bookingStatusHistory.create({
-          data: { bookingId: registry.id, fromStatus: registry.status, toStatus: BookingStatus.CANCELLED, reason: 'Flex booking cancelled' },
-        });
-        await tx.commission.updateMany({ where: { bookingId: registry.id }, data: { status: CommissionStatus.CANCELLED } });
-      }
+    const registry = await this.prisma.booking.findUnique({ where: { flexBookingId: id } });
+    if (registry && registry.status !== BookingStatus.CANCELLED) {
+      await this.bookingsService.executeCancellation(
+        registry.id,
+        'Flex booking cancelled',
+        changedById ?? 'system',
+      );
+    }
+    await this.prisma.flexBooking.update({
+      where: { id },
+      data: { deletedAt: new Date() },
     });
+    if (registry) {
+      await this.prisma.booking.update({
+        where: { id: registry.id },
+        data: { deletedAt: new Date() },
+      });
+    }
   }
 }

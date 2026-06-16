@@ -1,10 +1,13 @@
 import {
     Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query,
 } from '@nestjs/common';
-import { BookingSource } from '@prisma/client';
+import { BookingSource, CancellationRequestStatus } from '@prisma/client';
 import { BookingsService } from './bookings.service';
+import { BookingCancellationRequestsService } from './booking-cancellation-requests.service';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
+import { RequestCancellationDto } from './dto/request-cancellation.dto';
+import { RejectCancellationDto } from './dto/reject-cancellation.dto';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -13,7 +16,48 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @ApiBearerAuth('access-token')
 @Controller('bookings')
 export class BookingsController {
-    constructor(private readonly bookingsService: BookingsService) { }
+    constructor(
+        private readonly bookingsService: BookingsService,
+        private readonly cancellationRequests: BookingCancellationRequestsService,
+    ) { }
+
+    @Get('cancellation-requests')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Listar solicitudes de cancelación',
+        description: 'Cola de solicitudes de cancelación enviadas por embajadores.',
+    })
+    @ApiQuery({ name: 'status', required: false, enum: CancellationRequestStatus })
+    listCancellationRequests(@Query('status') status?: CancellationRequestStatus) {
+        return this.cancellationRequests.listRequests(status ?? CancellationRequestStatus.PENDING);
+    }
+
+    @Post('cancellation-requests/:requestId/approve')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Aprobar solicitud de cancelación',
+        description: 'Ejecuta la cancelación de la reserva y notifica al embajador y al cliente.',
+    })
+    approveCancellationRequest(
+        @Param('requestId', ParseUUIDPipe) requestId: string,
+        @CurrentUser() user: CurrentUserPayload,
+    ) {
+        return this.cancellationRequests.approve(requestId, user.id);
+    }
+
+    @Post('cancellation-requests/:requestId/reject')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Rechazar solicitud de cancelación',
+        description: 'Rechaza la solicitud; la reserva permanece activa.',
+    })
+    rejectCancellationRequest(
+        @Param('requestId', ParseUUIDPipe) requestId: string,
+        @CurrentUser() user: CurrentUserPayload,
+        @Body() body: RejectCancellationDto,
+    ) {
+        return this.cancellationRequests.reject(requestId, user.id, body.adminNotes);
+    }
 
     @Get()
     @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
@@ -83,5 +127,19 @@ export class BookingsController {
         @Body() body: CancelBookingDto,
     ) {
         return this.bookingsService.cancel(id, body.reason ?? 'Cancelada por administración', user.id);
+    }
+
+    @Post(':id/request-cancellation')
+    @Roles('AMBASSADOR')
+    @ApiOperation({
+        summary: 'Solicitar cancelación de reserva',
+        description: 'El embajador solicita la cancelación; un ADMIN debe aprobarla.',
+    })
+    requestCancellation(
+        @Param('id', ParseUUIDPipe) id: string,
+        @CurrentUser() user: CurrentUserPayload,
+        @Body() body: RequestCancellationDto,
+    ) {
+        return this.cancellationRequests.requestCancellation(id, user.id, body.reason);
     }
 }

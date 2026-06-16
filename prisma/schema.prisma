@@ -113,6 +113,12 @@ enum BookingStatus {
   NO_SHOW
 }
 
+enum CancellationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum BookingSource {
   CLOUDBEDS
   FLEX
@@ -170,6 +176,8 @@ model User {
   agendaContacts       AgendaContact[] @relation("AgendaOwner")
   agendaNotes          AgendaNote[]    @relation("AgendaNoteAuthor")
   notificationPreferences UserNotificationPreferences?
+  cancellationRequestsRequested BookingCancellationRequest[] @relation("CancellationRequestedBy")
+  cancellationRequestsReviewed  BookingCancellationRequest[] @relation("CancellationReviewedBy")
 
   @@index([email])
   @@index([deletedAt])
@@ -682,6 +690,7 @@ model Booking {
   statusHistory       BookingStatusHistory[]
   commission          Commission?
   availability        UnitAvailability[]
+  cancellationRequests BookingCancellationRequest[]
 
   @@index([unitId, checkInDate, checkOutDate])
   @@index([status])
@@ -704,6 +713,27 @@ model BookingStatusHistory {
 
   @@index([bookingId])
   @@map("booking_status_history")
+}
+
+model BookingCancellationRequest {
+  id            String                    @id @default(uuid()) @db.Uuid
+  bookingId     String                    @map("booking_id") @db.Uuid
+  requestedById String                    @map("requested_by_id") @db.Uuid
+  reason        String                    @db.Text
+  status        CancellationRequestStatus @default(PENDING)
+  reviewedById  String?                   @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime?                 @map("reviewed_at") @db.Timestamptz
+  adminNotes    String?                   @db.Text
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
+
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("CancellationRequestedBy", fields: [requestedById], references: [id])
+  reviewedBy  User?   @relation("CancellationReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([bookingId, status])
+  @@index([status])
+  @@map("booking_cancellation_requests")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -783,6 +813,7 @@ enum NotificationType {
   BOOKING_CREATED
   BOOKING_CONFIRMED
   BOOKING_CANCELLED
+  BOOKING_CANCELLATION_REQUESTED
   AMBASSADOR_REQUEST
   AMBASSADOR_VERIFIED
   AMBASSADOR_REJECTED

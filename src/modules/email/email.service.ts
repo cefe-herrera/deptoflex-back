@@ -86,6 +86,32 @@ export class EmailService {
         });
     }
 
+    async sendBookingCancelledEmail(
+        email: string,
+        clientName: string,
+        propertyName: string,
+        dateRange: string,
+        reason?: string,
+    ): Promise<boolean> {
+        const reasonBlock = reason
+            ? `<p style="color:#64748b;font-size:14px;"><strong>Motivo:</strong> ${reason}</p>`
+            : '';
+
+        return this.send({
+            to: email,
+            subject: 'Weflex - Tu reserva fue cancelada',
+            html: this.layout(
+                'Reserva cancelada',
+                `
+          <p>Hola ${clientName},</p>
+          <p>Te informamos que tu reserva en <strong>${propertyName}</strong> (${dateRange}) fue cancelada.</p>
+          ${reasonBlock}
+          <p style="color:#64748b;font-size:13px;">Si tenés consultas, contactá al equipo de Weflex.</p>
+        `,
+            ),
+        });
+    }
+
     private async send(payload: { to: string; subject: string; html: string }): Promise<boolean> {
         try {
             const { data, error } = await this.resend.emails.send({

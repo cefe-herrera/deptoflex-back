@@ -164,26 +164,58 @@ export class BookingsService {
   }
 
   async cancel(id: string, reason: string, changedById: string) {
+    return this.executeCancellation(id, reason, changedById);
+  }
+
+  async executeCancellation(id: string, reason: string, changedById: string) {
     const booking = await this.findOne(id);
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Booking is already cancelled');
+    }
     if (booking.status === BookingStatus.COMPLETED) {
       throw new BadRequestException('Cannot cancel a completed booking');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.booking.update({ where: { id }, data: { status: BookingStatus.CANCELLED } });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (booking.flexBookingId) {
+        await tx.flexBooking.update({
+          where: { id: booking.flexBookingId },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      const result = await tx.booking.update({
+        where: { id },
+        data: { status: BookingStatus.CANCELLED },
+      });
 
       await tx.bookingStatusHistory.create({
-        data: { bookingId: id, fromStatus: booking.status, toStatus: BookingStatus.CANCELLED, reason, changedById },
+        data: {
+          bookingId: id,
+          fromStatus: booking.status,
+          toStatus: BookingStatus.CANCELLED,
+          reason,
+          changedById,
+        },
       });
 
       await tx.unitAvailability.deleteMany({ where: { bookingId: id } });
 
       if (booking.commission) {
-        await tx.commission.update({ where: { bookingId: id }, data: { status: CommissionStatus.CANCELLED } });
+        await tx.commission.update({
+          where: { bookingId: id },
+          data: { status: CommissionStatus.CANCELLED },
+        });
       }
 
-      return updated;
+      return result;
     });
+
+    this.notifications.notifyBookingCancelled(id, reason).catch((err) =>
+      this.logger.error(`notifyBookingCancelled failed for ${id}`, err),
+    );
+
+    return updated;
   }
 
   async complete(id: string, reason: string | undefined, changedById: string) {

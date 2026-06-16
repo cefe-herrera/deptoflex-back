@@ -208,6 +208,10 @@ export class ActivityService {
       include: {
         ...BOOKING_INCLUDE,
         statusHistory: { orderBy: { createdAt: 'asc' } },
+        cancellationRequests: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
     if (!booking) throw new NotFoundException('Booking not found');
@@ -238,6 +242,15 @@ export class ActivityService {
         reason: h.reason,
         createdAt: h.createdAt.toISOString(),
       })),
+      cancellationRequest: booking.cancellationRequests[0]
+        ? {
+            id: booking.cancellationRequests[0].id,
+            status: booking.cancellationRequests[0].status,
+            reason: booking.cancellationRequests[0].reason,
+            adminNotes: booking.cancellationRequests[0].adminNotes,
+            createdAt: booking.cancellationRequests[0].createdAt.toISOString(),
+          }
+        : null,
     };
   }
 

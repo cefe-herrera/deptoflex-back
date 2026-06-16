@@ -53,8 +53,12 @@ export class FlexBookingsController {
     description: 'Permite cambiar el estado o notas de una reserva flex. Solo ADMIN/OPERATOR.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFlexBookingDto) {
-    return this.flexBookingsService.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateFlexBookingDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.flexBookingsService.update(id, dto, user.id);
   }
 
   @Delete(':id')
@@ -65,7 +69,7 @@ export class FlexBookingsController {
     description: 'Marca la reserva como CANCELLED y la elimina lógicamente. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.flexBookingsService.softDelete(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.flexBookingsService.softDelete(id, user.id);
   }
 }

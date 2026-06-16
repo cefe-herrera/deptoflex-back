@@ -220,6 +220,146 @@ export class NotificationsService {
     });
   }
 
+  async notifyCancellationRequested(bookingId: string, requestId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        propertyFlex: { select: { name: true } },
+        property: { select: { name: true } },
+        unit: { select: { name: true } },
+        professionalProfile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
+        cancellationRequests: {
+          where: { id: requestId },
+          take: 1,
+          select: { reason: true },
+        },
+      },
+    });
+    if (!booking) return;
+
+    const placeName =
+      booking.propertyFlex?.name ??
+      booking.property?.name ??
+      booking.unit?.name ??
+      'una propiedad';
+    const ambassadorName =
+      [booking.professionalProfile?.user?.firstName, booking.professionalProfile?.user?.lastName]
+        .filter(Boolean)
+        .join(' ') ||
+      booking.professionalProfile?.firstName ||
+      'Un embajador';
+    const reason = booking.cancellationRequests[0]?.reason ?? '';
+
+    const payload = {
+      type: NotificationType.BOOKING_CANCELLATION_REQUESTED,
+      title: 'Solicitud de cancelación de reserva',
+      body: `${ambassadorName} solicitó cancelar la reserva de ${booking.clientName} en ${placeName}. Motivo: ${reason}`,
+      data: {
+        bookingId: booking.id,
+        cancellationRequestId: requestId,
+        url: '/admin/bookings',
+      },
+    };
+
+    await this.sendToRole('ADMIN', payload);
+  }
+
+  async notifyBookingCancelled(bookingId: string, reason?: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        unit: { select: { name: true } },
+        propertyFlex: { select: { name: true } },
+        property: { select: { name: true } },
+        professionalProfile: { select: { userId: true } },
+      },
+    });
+    if (!booking) return;
+
+    const placeName =
+      booking.unit?.name ??
+      booking.propertyFlex?.name ??
+      booking.property?.name ??
+      'la propiedad';
+    const dateRange = `${this.fmtDate(booking.checkInDate)} al ${this.fmtDate(booking.checkOutDate)}`;
+
+    if (booking.professionalProfile?.userId) {
+      await this.sendToUser({
+        userId: booking.professionalProfile.userId,
+        type: NotificationType.BOOKING_CANCELLED,
+        title: 'Reserva cancelada',
+        body: `La reserva de ${booking.clientName} en ${placeName} fue cancelada.`,
+        data: {
+          bookingId: booking.id,
+          url: `/dashboard/activity/${booking.id}`,
+        },
+      });
+    }
+
+    if (booking.clientEmail) {
+      this.emailService
+        .sendBookingCancelledEmail(
+          booking.clientEmail,
+          booking.clientName,
+          placeName,
+          dateRange,
+          reason,
+        )
+        .catch((err) => this.logger.error('sendBookingCancelledEmail failed', err));
+    } else {
+      this.logger.warn(`Booking ${bookingId} cancelled but client has no email`);
+    }
+  }
+
+  async notifyCancellationRejected(requestId: string) {
+    const request = await this.prisma.bookingCancellationRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        booking: {
+          include: {
+            propertyFlex: { select: { name: true } },
+            property: { select: { name: true } },
+            unit: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!request) return;
+
+    const booking = request.booking;
+    const placeName =
+      booking.propertyFlex?.name ??
+      booking.property?.name ??
+      booking.unit?.name ??
+      'la propiedad';
+    const notes = request.adminNotes ? ` Nota: ${request.adminNotes}` : '';
+
+    await this.sendToUser({
+      userId: request.requestedById,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: 'Solicitud de cancelación rechazada',
+      body: `Tu solicitud de cancelación para la reserva de ${booking.clientName} en ${placeName} fue rechazada.${notes}`,
+      data: {
+        bookingId: booking.id,
+        url: `/dashboard/activity/${booking.id}`,
+      },
+    });
+  }
+
+  private fmtDate(date: Date): string {
+    return new Date(date).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
   async broadcast(dto: SendNotificationDto): Promise<{ sent: number; skipped: number }> {
     const isPromotional = this.isPromotional(dto.type, dto.isPromotional);
     const base = {
