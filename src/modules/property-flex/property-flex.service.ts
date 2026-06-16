@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { findNextAvailableStart } from './flex-availability.util';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CreatePropertyFlexDto } from './dto/create-property-flex.dto';
 import { UpdatePropertyFlexDto } from './dto/update-property-flex.dto';
@@ -14,13 +15,14 @@ export class PropertyFlexService {
   ) {}
 
   async create(dto: CreatePropertyFlexDto) {
-    const { address, monthlyRate, depositAmount, commissionRate, ...rest } = dto;
+    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, ...rest } = dto;
     return this.prisma.propertyFlex.create({
       data: {
         ...rest,
         monthlyRate: String(monthlyRate),
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
         ...(commissionRate != null && { commissionRate: String(commissionRate) }),
+        ...(reservationPaymentAmount != null && { reservationPaymentAmount: String(reservationPaymentAmount) }),
         ...(address && { address: { create: address } }),
       },
       include: { address: true },
@@ -76,7 +78,7 @@ export class PropertyFlexService {
 
   async update(id: string, dto: UpdatePropertyFlexDto) {
     await this.findOne(id);
-    const { address, monthlyRate, depositAmount, commissionRate, ...rest } = dto;
+    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, ...rest } = dto;
     const updated = await this.prisma.propertyFlex.update({
       where: { id },
       data: {
@@ -84,6 +86,11 @@ export class PropertyFlexService {
         ...(monthlyRate != null && { monthlyRate: String(monthlyRate) }),
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
         ...(commissionRate != null && { commissionRate: String(commissionRate) }),
+        ...(reservationPaymentAmount !== undefined && {
+          reservationPaymentAmount: reservationPaymentAmount != null
+            ? String(reservationPaymentAmount)
+            : null,
+        }),
         ...(address && { address: { upsert: { create: address, update: address } } }),
       },
       include: { address: true },
@@ -161,5 +168,20 @@ export class PropertyFlexService {
         status: b.status,
       })),
     };
+  }
+
+  async getNextAvailableFrom(id: string, stayMonths?: number) {
+    const property = await this.findOne(id);
+    const months = stayMonths && stayMonths > 0 ? stayMonths : property.minMonths ?? 1;
+
+    const from = new Date().toISOString().slice(0, 10);
+    const horizon = new Date();
+    horizon.setMonth(horizon.getMonth() + 18);
+    const to = horizon.toISOString().slice(0, 10);
+
+    const { periods } = await this.getBookedPeriods(id, from, to);
+    const availableFrom = findNextAvailableStart(periods, months, 18);
+
+    return { availableFrom, stayMonths: months };
   }
 }

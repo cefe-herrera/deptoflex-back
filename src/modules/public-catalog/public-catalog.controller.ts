@@ -1,5 +1,5 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { PublicCatalogService } from './public-catalog.service';
 import {
@@ -32,6 +32,19 @@ export class PublicCatalogController {
   @ApiOperation({ summary: 'Listar unidades activas (solo lectura, sin auth)' })
   listUnits(@Query() query: QueryPublicUnitsListDto) {
     return this.publicCatalogService.listUnits(query);
+  }
+
+  @Public()
+  @Get('flex/:id/next-available')
+  @ApiOperation({ summary: 'Próxima fecha de ingreso disponible (público)' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({ name: 'months', required: false, type: Number })
+  flexNextAvailable(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('months') months?: string,
+  ) {
+    const stayMonths = months != null && months !== '' ? Number(months) : undefined;
+    return this.publicCatalogService.getFlexNextAvailable(id, stayMonths);
   }
 
   @Public()

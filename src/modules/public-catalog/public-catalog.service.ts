@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PropertyStatus, UnitStatus, RentalModality } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PropertyFlexService } from '../property-flex/property-flex.service';
 import {
   QueryPublicFlexListDto,
   QueryPublicPropertiesListDto,
@@ -9,7 +10,10 @@ import {
 
 @Injectable()
 export class PublicCatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly propertyFlexService: PropertyFlexService,
+  ) {}
 
   async listFlex(query: QueryPublicFlexListDto) {
     const { page = 1, limit = 50, city, bedrooms, bathrooms, maxMonthlyRate, type } = query;
@@ -133,6 +137,11 @@ export class PublicCatalogService {
     if (!propertyFlex) throw new NotFoundException('PropertyFlex not found');
     const { commissionRate: _commissionRate, deletedAt: _deletedAt, companyId: _companyId, ...safe } = propertyFlex;
     return safe;
+  }
+
+  async getFlexNextAvailable(id: string, stayMonths?: number) {
+    await this.findFlex(id);
+    return this.propertyFlexService.getNextAvailableFrom(id, stayMonths);
   }
 
   async findProperty(id: string) {

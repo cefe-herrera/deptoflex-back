@@ -896,6 +896,18 @@ enum FlexBookingStatus {
   COMPLETED
 }
 
+enum FlexBookingPaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MERCADOPAGO
+}
+
 enum FlexPricingPlanCode {
   MONTH_1
   MONTH_3
@@ -938,6 +950,7 @@ model PropertyFlex {
   maxMonths     Int?     @map("max_months") @db.SmallInt
   depositAmount   Decimal? @map("deposit_amount") @db.Decimal(10, 2)
   commissionRate  Decimal? @map("commission_rate") @db.Decimal(5, 2)
+  reservationPaymentAmount Decimal? @map("reservation_payment_amount") @db.Decimal(10, 2)
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -1070,6 +1083,8 @@ model FlexBooking {
   pricingPlanId         String?               @map("pricing_plan_id") @db.Uuid
   planCode              FlexPricingPlanCode?  @map("plan_code")
   entryCommissionAmount Decimal?              @map("entry_commission_amount") @db.Decimal(10, 2)
+  reservationPaymentAmount Decimal?           @map("reservation_payment_amount") @db.Decimal(10, 2)
+  paymentToken          String?               @unique @map("payment_token") @db.VarChar(64)
   currency              String                @default("ARS") @db.VarChar(3)
   status                FlexBookingStatus     @default(PENDING)
   notes                 String?           @db.Text
@@ -1081,6 +1096,7 @@ model FlexBooking {
   professionalProfile ProfessionalProfile?      @relation(fields: [professionalProfileId], references: [id])
   pricingPlan         PropertyFlexPricingPlan?  @relation(fields: [pricingPlanId], references: [id])
   booking             Booking?
+  payments            FlexBookingPayment[]
 
   @@index([propertyFlexId, startDate, endDate])
   @@index([pricingPlanId])
@@ -1088,6 +1104,26 @@ model FlexBooking {
   @@index([professionalProfileId])
   @@index([deletedAt])
   @@map("flex_bookings")
+}
+
+model FlexBookingPayment {
+  id             String                   @id @default(uuid()) @db.Uuid
+  flexBookingId  String                   @map("flex_booking_id") @db.Uuid
+  provider       PaymentProvider          @default(MERCADOPAGO)
+  status         FlexBookingPaymentStatus @default(PENDING)
+  amount         Decimal                  @db.Decimal(10, 2)
+  currency       String                   @default("ARS") @db.VarChar(3)
+  mpPreferenceId String?                  @unique @map("mp_preference_id") @db.VarChar(100)
+  mpPaymentId    String?                  @unique @map("mp_payment_id") @db.VarChar(100)
+  checkoutUrl    String?                  @map("checkout_url") @db.Text
+  paidAt         DateTime?                @map("paid_at") @db.Timestamptz
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+
+  flexBooking FlexBooking @relation(fields: [flexBookingId], references: [id], onDelete: Cascade)
+
+  @@index([flexBookingId, status])
+  @@map("flex_booking_payments")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

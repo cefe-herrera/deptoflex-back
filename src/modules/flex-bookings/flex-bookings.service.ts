@@ -8,8 +8,9 @@ import type { CurrentUserPayload } from '../../common/decorators/current-user.de
 import { CreateFlexBookingDto } from './dto/create-flex-booking.dto';
 import { UpdateFlexBookingDto } from './dto/update-flex-booking.dto';
 import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
-import { BookingSource, BookingStatus, CommissionStatus, FlexPricingPlanCode } from '@prisma/client';
+import { BookingSource, BookingStatus, CommissionStatus, FlexBookingStatus, FlexPricingPlanCode } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { FlexBookingPaymentsService } from '../payments/flex-booking-payments.service';
 
 const FLEX_TO_BOOKING_STATUS: Record<string, BookingStatus> = {
   PENDING: BookingStatus.PENDING,
@@ -29,6 +30,8 @@ export class FlexBookingsService {
     private flexPricing: FlexPricingService,
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
+    @Inject(forwardRef(() => FlexBookingPaymentsService))
+    private flexBookingPayments: FlexBookingPaymentsService,
   ) {}
 
   async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
@@ -61,6 +64,7 @@ export class FlexBookingsService {
     const monthlyAmount = quote.monthlyRent;
     const totalAmount = new Decimal(quote.totalAmount);
     const depositAmount = quote.depositAmount;
+    const reservationPaymentAmount = quote.reservationPaymentAmount;
     const currency = quote.currency ?? dto.currency ?? 'ARS';
 
     if (Math.abs(Number(dto.monthlyAmount) - monthlyAmount) > 1
@@ -87,6 +91,10 @@ export class FlexBookingsService {
     // (operational detail) AND register it in the unified Booking registry
     // with its Commission, in a single transaction.
     const { flexBooking, bookingId } = await this.prisma.$transaction(async (tx) => {
+      const paymentToken = reservationPaymentAmount > 0
+        ? FlexBookingPaymentsService.generatePaymentToken()
+        : null;
+
       const flexBooking = await tx.flexBooking.create({
         data: {
           propertyFlexId: dto.propertyFlexId,
@@ -103,6 +111,10 @@ export class FlexBookingsService {
           pricingPlanId: quote.pricingPlanId,
           ...(quote.planCode && { planCode: quote.planCode as FlexPricingPlanCode }),
           entryCommissionAmount: String(quote.entryCommissionAmount),
+          ...(reservationPaymentAmount > 0 && {
+            reservationPaymentAmount: String(reservationPaymentAmount),
+          }),
+          paymentToken,
           currency,
           notes: dto.notes,
         },
@@ -158,6 +170,57 @@ export class FlexBookingsService {
     );
 
     return flexBooking;
+  }
+
+  async confirmFromPayment(flexBookingId: string, mpPaymentId: string) {
+    const existing = await this.prisma.flexBooking.findFirst({
+      where: { id: flexBookingId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('FlexBooking not found');
+    if (existing.status === FlexBookingStatus.CONFIRMED) return existing;
+    if (existing.status === FlexBookingStatus.CANCELLED) {
+      throw new BadRequestException('Cannot confirm a cancelled flex booking');
+    }
+
+    let confirmedBookingId: string | null = null;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.flexBooking.update({
+        where: { id: flexBookingId },
+        data: { status: FlexBookingStatus.CONFIRMED },
+      });
+
+      const registry = await tx.booking.findUnique({ where: { flexBookingId } });
+      if (!registry) return;
+
+      if (registry.status !== BookingStatus.CONFIRMED) {
+        await tx.booking.update({
+          where: { id: registry.id },
+          data: { status: BookingStatus.CONFIRMED },
+        });
+        await tx.bookingStatusHistory.create({
+          data: {
+            bookingId: registry.id,
+            fromStatus: registry.status,
+            toStatus: BookingStatus.CONFIRMED,
+            reason: `Mercado Pago payment approved (${mpPaymentId})`,
+          },
+        });
+        confirmedBookingId = registry.id;
+      }
+    });
+
+    if (confirmedBookingId) {
+      this.notifications.notifyBookingConfirmed(confirmedBookingId).catch((err) =>
+        this.logger.error(`notifyBookingConfirmed failed for ${confirmedBookingId}`, err),
+      );
+    }
+
+    return this.findOne(flexBookingId);
+  }
+
+  async getPaymentLink(id: string, user: CurrentUserPayload) {
+    return this.flexBookingPayments.getPaymentLinkForBooking(id, user);
   }
 
   async findAll(query: QueryFlexBookingDto) {

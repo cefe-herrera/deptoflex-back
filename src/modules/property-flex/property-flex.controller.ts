@@ -151,6 +151,20 @@ export class PropertyFlexController {
     return this.propertyFlexService.getBookedPeriods(id, from, to);
   }
 
+  @Get(':id/next-available')
+  @ApiOperation({
+    summary: 'Próxima fecha de ingreso disponible',
+    description: 'Calcula el primer día disponible para una estadía de N meses según reservas activas.',
+  })
+  @ApiQuery({ name: 'months', required: false, type: Number, description: 'Duración de la estadía (default: minMonths de la propiedad)' })
+  getNextAvailable(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('months') months?: string,
+  ) {
+    const stayMonths = months != null && months !== '' ? Number(months) : undefined;
+    return this.propertyFlexService.getNextAvailableFrom(id, stayMonths);
+  }
+
   @Get(':id/availability')
   @ApiOperation({
     summary: 'Consultar disponibilidad de una propiedad flex',

@@ -36,6 +36,20 @@ export class FlexBookingsController {
     return this.flexBookingsService.findAll(query);
   }
 
+  @Get(':id/payment-link')
+  @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
+  @ApiOperation({
+    summary: 'Obtener link de pago para el huésped',
+    description: 'Devuelve la URL pública que el embajador comparte con el huésped para pagar y confirmar la reserva.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  getPaymentLink(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.flexBookingsService.getPaymentLink(id, user);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener reserva flex por ID',

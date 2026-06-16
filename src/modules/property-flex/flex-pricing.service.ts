@@ -17,6 +17,7 @@ export interface FlexPricingQuote {
   totalAmount: number;
   depositAmount: number;
   entryCommissionAmount: number;
+  reservationPaymentAmount: number;
   currency: string;
   rentIncludesExpenses: boolean;
   rentIncludesUtilities: boolean;
@@ -121,6 +122,7 @@ export class FlexPricingService {
       const depositAmount = property.depositAmount != null
         ? Number(property.depositAmount)
         : this.calculateDepositAmount(monthlyRent, FlexDepositRule.THIRD_OF_MONTH, null);
+      const reservationPaymentAmount = this.reservationPaymentFromProperty(property);
 
       return {
         pricingPlanId: null,
@@ -131,6 +133,7 @@ export class FlexPricingService {
         totalAmount,
         depositAmount,
         entryCommissionAmount: 0,
+        reservationPaymentAmount,
         currency: property.currency,
         rentIncludesExpenses: false,
         rentIncludesUtilities: false,
@@ -154,6 +157,7 @@ export class FlexPricingService {
       plan.customDepositAmount != null ? Number(plan.customDepositAmount) : null,
     );
     const entryCommissionAmount = this.calculateEntryCommission(monthlyRent, plan.entryCommissionRule);
+    const reservationPaymentAmount = this.reservationPaymentFromProperty(property);
 
     return {
       pricingPlanId: plan.id,
@@ -164,6 +168,7 @@ export class FlexPricingService {
       totalAmount: monthlyRent * totalMonths,
       depositAmount,
       entryCommissionAmount,
+      reservationPaymentAmount,
       currency: plan.currency,
       rentIncludesExpenses: plan.rentIncludesExpenses,
       rentIncludesUtilities: plan.rentIncludesUtilities,
@@ -221,6 +226,12 @@ export class FlexPricingService {
       default:
         return 0;
     }
+  }
+
+  reservationPaymentFromProperty(property: { reservationPaymentAmount?: unknown | null }): number {
+    if (property.reservationPaymentAmount == null) return 0;
+    const amount = Number(property.reservationPaymentAmount);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
   }
 
   private async syncPropertyPriceFromPlans(propertyFlexId: string) {

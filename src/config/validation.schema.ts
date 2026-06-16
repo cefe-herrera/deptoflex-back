@@ -18,4 +18,6 @@ export const validationSchema = Joi.object({
   RESEND_API_KEY: Joi.string().required(),
   EMAIL_FROM: Joi.string().default('Weflex <no-reply@weflex.com.ar>'),
   GOOGLE_CLIENT_ID: Joi.string().required(),
+  MERCADOPAGO_ACCESS_TOKEN: Joi.string().allow('').default(''),
+  MERCADOPAGO_WEBHOOK_SECRET: Joi.string().allow('').default(''),
 });

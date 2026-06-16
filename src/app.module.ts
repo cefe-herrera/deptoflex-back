@@ -8,6 +8,7 @@ import authConfig from './config/auth.config';
 import r2Config from './config/r2.config';
 import emailConfig from './config/email.config';
 import notificationsConfig from './config/notifications.config';
+import mercadopagoConfig from './config/mercadopago.config';
 import { validationSchema } from './config/validation.schema';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -31,6 +32,7 @@ import { FlexBookingsModule } from './modules/flex-bookings/flex-bookings.module
 import { AgendaModule } from './modules/agenda/agenda.module';
 import { ActivityModule } from './modules/activity/activity.module';
 import { PublicCatalogModule } from './modules/public-catalog/public-catalog.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -38,7 +40,7 @@ import { RolesGuard } from './common/guards/roles.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig],
+      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig, mercadopagoConfig],
       validationSchema,
       validationOptions: { abortEarly: true },
     }),
@@ -69,6 +71,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AgendaModule,
     ActivityModule,
     PublicCatalogModule,
+    PaymentsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
