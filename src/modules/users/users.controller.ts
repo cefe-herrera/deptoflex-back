@@ -1,9 +1,11 @@
 import {
   Controller, Get, Patch, Delete, Body, Param, ParseUUIDPipe, ParseIntPipe, Query,
-  Post, HttpCode, HttpStatus,
+  Post, HttpCode, HttpStatus, Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AssignRoleDto } from './dto/assign-role.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
@@ -40,8 +42,24 @@ export class UsersController {
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  findAll(@Query('page') page = 1, @Query('limit') limit = 20) {
-    return this.usersService.findAll(+page, +limit);
+  @ApiQuery({ name: 'search', required: false, type: String })
+  findAll(
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('search') search?: string,
+  ) {
+    return this.usersService.findAll(+page, +limit, search);
+  }
+
+  @Get(':id/role-audit')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Historial de cambios de roles',
+    description: 'Devuelve la trazabilidad de asignaciones y remociones de roles del usuario. Solo ADMIN.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  getRoleAudit(@Param('id', ParseUUIDPipe) id: string) {
+    return this.usersService.getRoleAuditTrail(id);
   }
 
   @Get(':id')
@@ -87,10 +105,11 @@ export class UsersController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   assignRole(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body('roleId', ParseIntPipe) roleId: number,
+    @Body() dto: AssignRoleDto,
     @CurrentUser() user: CurrentUserPayload,
+    @Req() req: Request,
   ) {
-    return this.usersService.assignRole(id, roleId, user.id);
+    return this.usersService.assignRole(id, dto.roleId, user.id, req.ip);
   }
 
   @Delete(':id/roles/:roleId')
@@ -103,7 +122,9 @@ export class UsersController {
   removeRole(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('roleId', ParseIntPipe) roleId: number,
+    @CurrentUser() user: CurrentUserPayload,
+    @Req() req: Request,
   ) {
-    return this.usersService.removeRole(id, roleId);
+    return this.usersService.removeRole(id, roleId, user.id, req.ip);
   }
 }

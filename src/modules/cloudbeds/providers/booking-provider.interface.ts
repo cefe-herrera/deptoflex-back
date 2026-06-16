@@ -170,6 +170,10 @@ export interface PrepareBookingResult {
   encryptedReservationId: string | null;
   customerId: string | null;
   status: string | null;
+  /** Cloudbeds may set success=false while still returning enc_res_id (e.g. payment pending). */
+  cloudbedsSuccessFlag: boolean;
+  statusMessage: string | null;
+  paymentUrl: string | null;
   raw: unknown;
   httpStatus: number;
   durationMs: number;

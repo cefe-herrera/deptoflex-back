@@ -84,6 +84,116 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   /** Timeout in ms for the upstream call. */
   private readonly timeoutMs = Number(process.env.CLOUDBEDS_HTTP_TIMEOUT_MS ?? 10_000);
 
+  /** Max chars logged for Cloudbeds HTTP response bodies. */
+  private readonly cloudbedsLogResponseMaxChars = Number(
+    process.env.CLOUDBEDS_LOG_RESPONSE_MAX_CHARS ?? 16_000,
+  );
+
+  private logCloudbedsRequest(
+    operation: 'prepare' | 'confirmation',
+    method: 'POST' | 'GET',
+    url: string,
+    payload?: string,
+  ): void {
+    const payloadPart = payload
+      ? ` payload=${this.formatFormBodyForLog(payload)}`
+      : '';
+    this.logger.log(`[Cloudbeds:${operation}] → ${method} ${url}${payloadPart}`);
+  }
+
+  private logCloudbedsResponse(
+    operation: 'prepare' | 'confirmation',
+    status: number,
+    body: string,
+    durationMs: number,
+  ): void {
+    this.logger.log(
+      `[Cloudbeds:${operation}] ← status=${status} durationMs=${durationMs} response=${this.truncateForLog(body)}`,
+    );
+  }
+
+  private logPrepareInputSummary(input: PrepareBookingInput): void {
+    this.logger.log(
+      `[Cloudbeds:prepare] input summary=${JSON.stringify({
+        propertyExternalId: input.propertyExternalId,
+        checkin: input.checkin,
+        checkout: input.checkout,
+        currencyCode: input.currencyCode,
+        lang: input.lang,
+        rooms: input.rooms,
+        guest: {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          country: input.country,
+          bookingEstimatedArrivalTime: input.bookingEstimatedArrivalTime,
+        },
+        cartTokenLength: input.cartToken.length,
+        sessionId: input.sessionId ?? null,
+        paymentSdk: input.paymentSdk,
+        bookingEngineSource: input.bookingEngineSource,
+      })}`,
+    );
+  }
+
+  private logPrepareResultSummary(result: PrepareBookingResult): void {
+    this.logger.log(
+      `[Cloudbeds:prepare] result summary=${JSON.stringify({
+        success: result.success,
+        cloudbedsSuccessFlag: result.cloudbedsSuccessFlag,
+        reservationId: result.reservationId,
+        encryptedReservationId: result.encryptedReservationId,
+        customerId: result.customerId,
+        status: result.status,
+        statusMessage: result.statusMessage,
+        paymentUrl: result.paymentUrl,
+        httpStatus: result.httpStatus,
+        durationMs: result.durationMs,
+      })}`,
+    );
+  }
+
+  private logConfirmationResultSummary(result: ConfirmationResult): void {
+    this.logger.log(
+      `[Cloudbeds:confirmation] parsed summary=${JSON.stringify({
+        reservationId: result.reservationId,
+        guestName: result.guestName,
+        guestEmail: result.guestEmail,
+        checkin: result.checkin,
+        checkout: result.checkout,
+        totalAmount: result.totalAmount,
+        currencyCode: result.currencyCode,
+        propertyExternalId: result.propertyExternalId,
+        roomTypeId: result.roomTypeId,
+        status: result.status,
+        httpStatus: result.httpStatus,
+        durationMs: result.durationMs,
+      })}`,
+    );
+  }
+
+  private formatFormBodyForLog(body: string): string {
+    try {
+      const params = new URLSearchParams(body);
+      const obj: Record<string, string> = {};
+      params.forEach((value, key) => {
+        obj[key] = value.length > 2_000 ? `${value.slice(0, 2_000)}… [truncated]` : value;
+      });
+      return JSON.stringify(obj);
+    } catch {
+      return this.truncateForLog(body);
+    }
+  }
+
+  private truncateForLog(text: string): string {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= this.cloudbedsLogResponseMaxChars) {
+      return normalized;
+    }
+    return `${normalized.slice(0, this.cloudbedsLogResponseMaxChars)}… [truncated ${normalized.length - this.cloudbedsLogResponseMaxChars} chars]`;
+  }
+
   async searchAvailability(input: SearchAvailabilityInput): Promise<AvailabilityResult> {
     this.logger.log("searchAvailability")
     const body = this.buildFormBody(input);
@@ -201,18 +311,20 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   }
 
   async prepareBooking(input: PrepareBookingInput): Promise<PrepareBookingResult> {
-    this.logger.log('prepareBooking');
     const body = this.buildPrepareFormBody(input);
     const startedAt = Date.now();
+
+    this.logPrepareInputSummary(input);
+    this.logCloudbedsRequest('prepare', 'POST', this.prepareEndpoint, body);
 
     let httpStatus = 0;
     let rawText = '';
     try {
-      this.logger.log(`httpPost endpoint=${this.prepareEndpoint}`);
       const { status, text } = await this.httpPost(this.prepareEndpoint, body);
-      this.logger.log(`httpPost status=${status} text=${text.slice(0, 1000)}`);
       httpStatus = status;
       rawText = text;
+      const durationMs = Date.now() - startedAt;
+      this.logCloudbedsResponse('prepare', status, text, durationMs);
 
       if (status < 200 || status >= 300) {
         this.logger.warn(
@@ -238,17 +350,31 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       }
 
       const parsed = parseResult.data;
-      if (parsed.success === false) {
+      const hasEncryptedId = Boolean(parsed.enc_res_id?.trim());
+
+      if (parsed.success === false && !hasEncryptedId) {
+        const detail =
+          parsed.statusMessage ??
+          parsed.message ??
+          (parsed.errorCode != null ? String(parsed.errorCode) : null) ??
+          'unknown';
         this.logger.warn(
-          `Cloudbeds prepare returned success=false: ${parsed.statusMessage ?? 'unknown'}`,
+          `Cloudbeds prepare rejected (no enc_res_id): ${detail} body="${rawText.slice(0, 800).replace(/\s+/g, ' ')}"`,
         );
         throw new ServiceUnavailableException(
-          parsed.statusMessage ?? 'Booking engine rejected the prepare request',
+          parsed.statusMessage ?? parsed.message ?? 'Booking engine rejected the prepare request',
         );
       }
 
-      const durationMs = Date.now() - startedAt;
-      return this.normalizePrepare(input, parsed, httpStatus, durationMs);
+      if (parsed.success === false && hasEncryptedId) {
+        this.logger.warn(
+          `Cloudbeds prepare returned success=false but enc_res_id is present — treating as soft success (likely payment pending). statusMessage=${parsed.statusMessage ?? parsed.message ?? 'n/a'} payment_url=${parsed.payment_url ?? 'n/a'}`,
+        );
+      }
+
+      const result = this.normalizePrepare(input, parsed, httpStatus, durationMs);
+      this.logPrepareResultSummary(result);
+      return result;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       if (err instanceof ServiceUnavailableException) throw err;
@@ -333,21 +459,31 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     const startedAt = Date.now();
     const url = `${this.confirmationEndpoint}?data_res=${encodeURIComponent(input.dataRes)}`;
 
+    this.logger.log(
+      `[Cloudbeds:confirmation] request data_res=${JSON.stringify({
+        length: input.dataRes.length,
+        value: input.dataRes,
+      })}`,
+    );
+    this.logCloudbedsRequest('confirmation', 'GET', url);
+
     let httpStatus = 0;
     let rawText = '';
     try {
-      this.logger.log(`httpGet confirmation endpoint=${this.confirmationEndpoint}`);
       const { status, text } = await this.httpGet(url);
       httpStatus = status;
       rawText = text;
+      const durationMs = Date.now() - startedAt;
+      this.logCloudbedsResponse('confirmation', status, text, durationMs);
 
       if (status < 200 || status >= 300) {
         this.logger.warn(`Cloudbeds confirmation returned non-OK status ${httpStatus}`);
         throw new ServiceUnavailableException('Booking engine confirmation upstream error');
       }
 
-      const durationMs = Date.now() - startedAt;
-      return this.parseConfirmation(rawText, httpStatus, durationMs);
+      const result = this.parseConfirmation(rawText, httpStatus, durationMs);
+      this.logConfirmationResultSummary(result);
+      return result;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
       if (err instanceof ServiceUnavailableException) throw err;
@@ -363,15 +499,31 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   }
 
   /**
-   * Best-effort parse of the confirmation page. The page is HTML and not an
-   * official contract, so we (1) try to extract an embedded JSON blob, then
-   * (2) fall back to targeted regexes, and always keep a truncated raw copy.
+   * Best-effort parse of the confirmation response. Cloudbeds may return a JSON
+   * API payload (`{ success, data: { mail_info, ... } }`) or an HTML page with
+   * embedded state. We try JSON first, then embedded JSON, then regex fallbacks.
    */
   private parseConfirmation(
-    html: string,
+    rawText: string,
     httpStatus: number,
     durationMs: number,
   ): ConfirmationResult {
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const json = JSON.parse(trimmed) as {
+          success?: boolean;
+          data?: Record<string, unknown>;
+        };
+        if (json.success !== false && json.data && typeof json.data === 'object') {
+          return this.normalizeConfirmationJson(json.data, rawText, httpStatus, durationMs);
+        }
+      } catch {
+        // fall through to HTML heuristics
+      }
+    }
+
+    const html = rawText;
     const parsed = this.extractEmbeddedJson(html);
 
     const pick = (...keys: string[]): unknown => {
@@ -436,7 +588,80 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       roomTypeId,
       status,
       parsed,
-      raw: html.slice(0, 20_000),
+      raw: rawText.slice(0, 20_000),
+      httpStatus,
+      durationMs,
+    };
+  }
+
+  /** Parse `{ success, data }` JSON from GET /booking/confirmation. */
+  private normalizeConfirmationJson(
+    data: Record<string, unknown>,
+    rawText: string,
+    httpStatus: number,
+    durationMs: number,
+  ): ConfirmationResult {
+    const mailInfo =
+      data.mail_info && typeof data.mail_info === 'object'
+        ? (data.mail_info as Record<string, unknown>)
+        : {};
+    const rooms = Array.isArray(mailInfo.booking_rooms)
+      ? (mailInfo.booking_rooms as Array<Record<string, unknown>>)
+      : [];
+    const firstRoom = rooms[0] ?? {};
+
+    const asString = (v: unknown): string | null =>
+      v == null ? null : String(v).trim() || null;
+    const asNumber = (v: unknown): number | null => {
+      if (v == null) return null;
+      const n = typeof v === 'number' ? v : Number(String(v).replace(/[^0-9.-]/g, ''));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const guestFirstName =
+      asString(mailInfo.first_name) ?? asString(data.first) ?? asString(data.first_name);
+    const guestLastName =
+      asString(mailInfo.last_name) ?? asString(data.last) ?? asString(data.last_name);
+    const guestNameJoined = [guestFirstName, guestLastName].filter(Boolean).join(' ').trim();
+    const guestName =
+      asString(mailInfo.name) ??
+      asString(data.name) ??
+      (guestNameJoined.length > 0 ? guestNameJoined : null);
+
+    return {
+      reservationId:
+        asString(mailInfo.reservation_id) ??
+        asString(mailInfo.identifier) ??
+        asString(data.identifier) ??
+        asString(data.reservation_id),
+      guestFirstName,
+      guestLastName,
+      guestName,
+      guestEmail: asString(mailInfo.email) ?? asString(data.email),
+      guestPhone: asString(mailInfo.phone) ?? asString(data.phone),
+      checkin:
+        asString(mailInfo.checkin_date) ??
+        asString(data.checkin) ??
+        asString(data.checkin_date),
+      checkout:
+        asString(mailInfo.checkout_date) ??
+        asString(data.checkout) ??
+        asString(data.checkout_date),
+      totalAmount:
+        asNumber(mailInfo.grand_total) ??
+        asNumber(mailInfo.booking_total) ??
+        asNumber(data.total) ??
+        asNumber(data.grand_total),
+      currencyCode:
+        asString(mailInfo.currency_from) ??
+        asString(data.currency_code) ??
+        asString(data.currency),
+      propertyExternalId:
+        asString(data.property_id) ?? asString(mailInfo.property_id),
+      roomTypeId: asString(firstRoom.room_type_id) ?? asString(data.room_type_id),
+      status: asString(data.status) ?? asString(mailInfo.status),
+      parsed: { ...data, ...mailInfo },
+      raw: rawText.slice(0, 20_000),
       httpStatus,
       durationMs,
     };
@@ -752,16 +977,22 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     httpStatus: number,
     durationMs: number,
   ): PrepareBookingResult {
+    const hasEncryptedId = Boolean(raw.enc_res_id?.trim());
+    const bookingId = raw.id ?? raw.reservation_id;
+
     return {
       propertyExternalId: input.propertyExternalId,
       checkin: input.checkin,
       checkout: input.checkout,
       currencyCode: input.currencyCode,
-      success: raw.success ?? true,
-      reservationId: raw.reservation_id != null ? String(raw.reservation_id) : null,
+      success: hasEncryptedId || raw.success !== false,
+      cloudbedsSuccessFlag: raw.success !== false,
+      reservationId: bookingId != null ? String(bookingId) : null,
       encryptedReservationId: raw.enc_res_id ?? null,
       customerId: raw.customer_id != null ? String(raw.customer_id) : null,
       status: raw.status ?? null,
+      statusMessage: raw.statusMessage ?? raw.message ?? null,
+      paymentUrl: raw.payment_url ?? null,
       raw,
       httpStatus,
       durationMs,

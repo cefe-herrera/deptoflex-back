@@ -315,11 +315,127 @@ describe('CloudbedsPublicBookingProvider', () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.cloudbedsSuccessFlag).toBe(true);
       expect(result.reservationId).toBe('2448738948993');
       expect(result.encryptedReservationId).toBe('encrypted');
       expect(result.customerId).toBe('176234319');
       expect(result.status).toBe('confirmed');
       expect(result.httpStatus).toBe(200);
+    });
+
+    it('accepts success=false when enc_res_id is present (soft success)', async () => {
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue({
+          status: 200,
+          text: JSON.stringify({
+            success: false,
+            id: '178174824',
+            reservation_id: '9066723849016',
+            enc_res_id: 'encrypted-token',
+            customer_id: '178971184',
+            payment_url: '',
+          }),
+        });
+
+      const result = await provider.prepareBooking({
+        ...baseInput,
+        cartToken: 'token',
+        rooms: [{ rateId: '551718', adults: 2, kids: 0 }],
+        firstName: 'Ceferino',
+        lastName: 'Herrera',
+        email: 'test@mail.com',
+        phone: '+543874025678',
+        country: 'AR',
+        bookingEstimatedArrivalTime: 1,
+        paymentSdk: true,
+        cfarOffersPresented: false,
+        bookingEngineSource: 'hosted',
+        iframe: false,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cloudbedsSuccessFlag).toBe(false);
+      expect(result.reservationId).toBe('178174824');
+      expect(result.encryptedReservationId).toBe('encrypted-token');
+    });
+
+    it('rejects when success=false and enc_res_id is missing', async () => {
+      httpPostMock = jest
+        .spyOn(provider as any, 'httpPost')
+        .mockResolvedValue({
+          status: 200,
+          text: JSON.stringify({
+            success: false,
+            statusMessage: 'Cart expired',
+          }),
+        });
+
+      await expect(
+        provider.prepareBooking({
+          ...baseInput,
+          cartToken: 'token',
+          rooms: [{ rateId: '551718', adults: 1, kids: 0 }],
+          firstName: 'A',
+          lastName: 'B',
+          email: 'a@b.com',
+          phone: '+5412345678',
+          country: 'AR',
+          bookingEstimatedArrivalTime: 1,
+          paymentSdk: true,
+          cfarOffersPresented: false,
+          bookingEngineSource: 'hosted',
+          iframe: false,
+        }),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+  });
+
+  describe('getConfirmation (JSON API)', () => {
+    let httpGetMock: jest.SpyInstance;
+
+    afterEach(() => {
+      httpGetMock?.mockRestore?.();
+    });
+
+    it('parses JSON confirmation payload from GET /booking/confirmation', async () => {
+      httpGetMock = jest.spyOn(provider as any, 'httpGet').mockResolvedValue({
+        status: 200,
+        text: JSON.stringify({
+          success: true,
+          data: {
+            identifier: '9279324628160',
+            status: 'confirmed',
+            property_id: '288413',
+            total: 62500,
+            first: 'Armando',
+            mail_info: {
+              reservation_id: '178174178',
+              first_name: 'Armando',
+              last_name: 'Herrera',
+              email: 'armandoher01@gmail.com',
+              phone: '+543874025678',
+              checkin_date: '2026-06-21',
+              checkout_date: '2026-06-22',
+              grand_total: 62500,
+              currency_from: 'ARS',
+              booking_rooms: [{ room_type_id: '531507' }],
+            },
+          },
+        }),
+      });
+
+      const result = await provider.getConfirmation({ dataRes: 'encrypted-token' });
+
+      expect(result.reservationId).toBe('178174178');
+      expect(result.guestName).toBe('Armando Herrera');
+      expect(result.guestEmail).toBe('armandoher01@gmail.com');
+      expect(result.checkin).toBe('2026-06-21');
+      expect(result.checkout).toBe('2026-06-22');
+      expect(result.totalAmount).toBe(62500);
+      expect(result.propertyExternalId).toBe('288413');
+      expect(result.roomTypeId).toBe('531507');
+      expect(result.status).toBe('confirmed');
     });
   });
 });

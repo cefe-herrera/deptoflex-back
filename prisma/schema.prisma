@@ -178,6 +178,7 @@ model User {
   notificationPreferences UserNotificationPreferences?
   cancellationRequestsRequested BookingCancellationRequest[] @relation("CancellationRequestedBy")
   cancellationRequestsReviewed  BookingCancellationRequest[] @relation("CancellationReviewedBy")
+  roleAssignmentsMade           UserRole[]                   @relation("RoleAssignedBy")
 
   @@index([email])
   @@index([deletedAt])
@@ -202,8 +203,9 @@ model UserRole {
   assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz
   assignedBy String?  @map("assigned_by") @db.Uuid
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user           User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedByUser User? @relation("RoleAssignedBy", fields: [assignedBy], references: [id], onDelete: SetNull)
 
   @@id([userId, roleId])
   @@map("user_roles")
