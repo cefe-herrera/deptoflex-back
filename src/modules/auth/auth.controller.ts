@@ -6,15 +6,18 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  Redirect,
   Req,
+  Query,
+  Res,
 } from '@nestjs/common';
 import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import type { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { AppleLoginDto } from './dto/apple-login.dto';
@@ -22,17 +25,18 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
-import { Resend } from 'resend';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-import { Query } from '@nestjs/common';
 
 @ApiTags('Auth')
 @ApiBearerAuth('access-token')
 @UseGuards(ThrottlerGuard)
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(
+    private authService: AuthService,
+    private configService: ConfigService,
+  ) {}
 
   @Public()
   @Throttle({ auth: { limit: 5, ttl: 60000 } })
@@ -128,13 +132,31 @@ export class AuthController {
 
   @Public()
   @Get('verify-email')
-  @Redirect('https://deptoflex-front-jg6i.vercel.app/login', 302)
   @ApiOperation({
     summary: 'Verificar email (GET con redirect)',
     description: 'Variante GET pensada para que el usuario haga click directamente en el link del mail. Verifica el token y redirige al login del frontend.',
   })
-  async verifyEmailGet(@Query() query: VerifyEmailDto) {
-    await this.authService.verifyEmail(query);
+  async verifyEmailGet(@Query() query: VerifyEmailDto, @Res() res: Response) {
+    const frontendUrl = this.configService.get<string>('app.frontendUrl') ?? 'http://localhost:3001';
+
+    try {
+      await this.authService.verifyEmail(query);
+      return res.redirect(`${frontendUrl}/login?verified=1`);
+    } catch {
+      return res.redirect(`${frontendUrl}/login?verified=0`);
+    }
+  }
+
+  @Public()
+  @Throttle({ auth: { limit: 3, ttl: 60000 } })
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reenviar email de verificación',
+    description: 'Envía un nuevo link de verificación si el email existe y aún no fue verificado. Limitado a 3 por minuto.',
+  })
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.authService.resendVerification(dto);
   }
 
   @Public()

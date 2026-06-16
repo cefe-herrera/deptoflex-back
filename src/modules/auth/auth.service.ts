@@ -14,6 +14,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { TokenType } from '@prisma/client';
@@ -51,8 +52,7 @@ export class AuthService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         phone: dto.phone ?? null,
-        emailVerified: true,
-        emailVerifiedAt: new Date(),
+        emailVerified: false,
         termsAcceptedAt: new Date(),
         userRoles: {
           create: { role: { connect: { name: 'USER' } } },
@@ -64,10 +64,20 @@ export class AuthService {
             phone: dto.phone ?? null,
           },
         },
+        notificationPreferences: {
+          create: {},
+        },
       },
     });
 
-    return { id: user.id, email: user.email };
+    const token = await this.createVerificationToken(user.id, TokenType.EMAIL_VERIFICATION);
+    await this.emailService.sendVerificationEmail(user.email, token);
+
+    return {
+      id: user.id,
+      email: user.email,
+      message: 'Revisá tu correo para verificar tu cuenta antes de iniciar sesión',
+    };
   }
 
   async login(dto: LoginDto, meta: { userAgent?: string; ipAddress?: string }) {
@@ -81,7 +91,7 @@ export class AuthService {
     const valid = await argon2.verify(user.passwordHash, dto.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
-    if (!user.emailVerified) throw new ForbiddenException('Email not verified');
+    if (!user.emailVerified) throw new ForbiddenException('Email not verified. Check your inbox or request a new verification email.');
     if (!user.isActive) throw new ForbiddenException('Account is inactive');
 
     const roles = user.userRoles.map((ur) => ur.role.name);
@@ -140,6 +150,9 @@ export class AuthService {
               lastName: payload.family_name ?? '',
               phone: null,
             },
+          },
+          notificationPreferences: {
+            create: {},
           },
         },
         include: { userRoles: { include: { role: true } } },
@@ -213,6 +226,22 @@ export class AuthService {
     ]);
 
     return { message: 'Email verified successfully' };
+  }
+
+  async resendVerification(dto: ResendVerificationDto) {
+    const user = await this.prisma.user.findFirst({
+      where: { email: dto.email, deletedAt: null },
+    });
+
+    if (user && !user.emailVerified) {
+      await this.prisma.verificationToken.deleteMany({
+        where: { userId: user.id, type: TokenType.EMAIL_VERIFICATION, usedAt: null },
+      });
+      const token = await this.createVerificationToken(user.id, TokenType.EMAIL_VERIFICATION);
+      await this.emailService.sendVerificationEmail(user.email, token);
+    }
+
+    return { message: 'If that email is registered and pending verification, a new link has been sent' };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {

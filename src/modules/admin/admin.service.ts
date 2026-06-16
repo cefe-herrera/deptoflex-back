@@ -11,8 +11,6 @@ export class AdminService {
       totalProperties,
       pendingAmbassadors,
       activeAmbassadors,
-      totalLeads,
-      newLeads,
     ] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.property.count({ where: { deletedAt: null } }),
@@ -20,8 +18,6 @@ export class AdminService {
         where: { ambassadorRequestedAt: { not: null }, status: 'PENDING' },
       }),
       this.prisma.professionalProfile.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.lead.count(),
-      this.prisma.lead.count({ where: { status: 'NEW' } }),
     ]);
 
     return {
@@ -29,8 +25,6 @@ export class AdminService {
       totalProperties,
       pendingAmbassadors,
       activeAmbassadors,
-      totalLeads,
-      newLeads,
     };
   }
 }

@@ -4,8 +4,10 @@ import { NotificationType, DeviceProvider } from '@prisma/client';
 import { NotificationsGateway } from './notifications.gateway';
 import { FcmProvider } from './providers/fcm.provider';
 import { WebPushProvider } from './providers/webpush.provider';
+import { EmailService } from '../email/email.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { NotificationTarget, SendNotificationDto } from './dto/send-notification.dto';
+import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 
 export interface SendNotificationInput {
   userId: string;
@@ -14,6 +16,8 @@ export interface SendNotificationInput {
   body: string;
   data?: Record<string, any>;
 }
+
+const PROMOTIONAL_TYPES: NotificationType[] = [NotificationType.PROMOTION];
 
 @Injectable()
 export class NotificationsService {
@@ -24,13 +28,51 @@ export class NotificationsService {
     private gateway: NotificationsGateway,
     private fcm: FcmProvider,
     private webpush: WebPushProvider,
+    private emailService: EmailService,
   ) {}
 
+  private isPromotional(type: NotificationType, explicit?: boolean): boolean {
+    if (PROMOTIONAL_TYPES.includes(type)) return true;
+    return type === NotificationType.GENERIC && explicit === true;
+  }
+
+  async getOrCreatePreferences(userId: string) {
+    return this.prisma.userNotificationPreferences.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
+  }
+
+  async getPreferences(userId: string) {
+    return this.getOrCreatePreferences(userId);
+  }
+
+  async updatePreferences(userId: string, dto: UpdateNotificationPreferencesDto) {
+    await this.getOrCreatePreferences(userId);
+    return this.prisma.userNotificationPreferences.update({
+      where: { userId },
+      data: {
+        ...(dto.pushEnabled !== undefined && { pushEnabled: dto.pushEnabled }),
+        ...(dto.emailEnabled !== undefined && { emailEnabled: dto.emailEnabled }),
+        ...(dto.promosEnabled !== undefined && { promosEnabled: dto.promosEnabled }),
+        // WhatsApp aún no implementado — nunca persistir true
+        ...(dto.whatsappEnabled !== undefined && { whatsappEnabled: false }),
+      },
+    });
+  }
+
   /**
-   * Persists notification, emits via WebSocket and pushes to all user devices.
-   * Use this from any module to notify a user (e.g. new lead, booking confirmed).
+   * Persists notification, emits via WebSocket and optionally pushes/emails per user prefs.
    */
-  async sendToUser(input: SendNotificationInput) {
+  async sendToUser(input: SendNotificationInput, options?: { isPromotional?: boolean }) {
+    const prefs = await this.getOrCreatePreferences(input.userId);
+    const promotional = this.isPromotional(input.type, options?.isPromotional);
+
+    if (promotional && !prefs.promosEnabled) {
+      return null;
+    }
+
     const notif = await this.prisma.notification.create({
       data: {
         userId: input.userId,
@@ -41,31 +83,52 @@ export class NotificationsService {
       },
     });
 
-    // 1. Real-time in-app via WebSocket
     this.gateway.emitToUser(input.userId, 'notification:new', notif);
     const unreadCount = await this.unreadCount(input.userId);
     this.gateway.emitToUser(input.userId, 'notification:unread-count', { count: unreadCount });
 
-    // 2. Push to all registered devices (fire & forget)
-    this.pushToDevices(input.userId, {
-      title: input.title,
-      body: input.body,
-      data: input.data,
-    }).catch((err) => this.logger.error('pushToDevices failed', err));
+    if (prefs.pushEnabled) {
+      this.pushToDevices(input.userId, {
+        title: input.title,
+        body: input.body,
+        data: input.data,
+      }).catch((err) => this.logger.error('pushToDevices failed', err));
+    }
+
+    if (prefs.emailEnabled) {
+      this.sendNotificationEmail(input.userId, input.title, input.body, input.data?.url).catch((err) =>
+        this.logger.error('sendNotificationEmail failed', err),
+      );
+    }
 
     return notif;
   }
 
-  /** Send the same notification to all users with a given role. */
-  async sendToRole(role: string, input: Omit<SendNotificationInput, 'userId'>) {
+  private async sendNotificationEmail(
+    userId: string,
+    title: string,
+    body: string,
+    actionUrl?: string,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null, emailVerified: true },
+      select: { email: true },
+    });
+    if (!user?.email) return;
+    await this.emailService.sendNotificationEmail(user.email, title, body, actionUrl);
+  }
+
+  async sendToRole(role: string, input: Omit<SendNotificationInput, 'userId'>, options?: { isPromotional?: boolean }) {
     const users = await this.prisma.user.findMany({
       where: { isActive: true, deletedAt: null, userRoles: { some: { role: { name: role } } } },
       select: { id: true },
     });
-    return Promise.all(users.map((u) => this.sendToUser({ ...input, userId: u.id })));
+    const results = await Promise.all(
+      users.map((u) => this.sendToUser({ ...input, userId: u.id }, options)),
+    );
+    return results.filter(Boolean);
   }
 
-  /** Notifies OPERATOR and ADMIN when a new lead is created. */
   async notifyNewLead(leadId: string) {
     const lead = await this.prisma.lead.findUnique({
       where: { id: leadId },
@@ -93,7 +156,6 @@ export class NotificationsService {
     ]);
   }
 
-  /** Notifies OPERATOR and ADMIN when a new booking is created (flex request, etc.). */
   async notifyBookingCreated(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -128,7 +190,6 @@ export class NotificationsService {
     ]);
   }
 
-  /** Notifies the professional/ambassador when their booking is confirmed. */
   async notifyBookingConfirmed(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -159,8 +220,8 @@ export class NotificationsService {
     });
   }
 
-  /** Admin broadcast: send to one user, a role, or all active users. */
-  async broadcast(dto: SendNotificationDto): Promise<{ sent: number }> {
+  async broadcast(dto: SendNotificationDto): Promise<{ sent: number; skipped: number }> {
+    const isPromotional = this.isPromotional(dto.type, dto.isPromotional);
     const base = {
       type: dto.type,
       title: dto.title,
@@ -170,28 +231,75 @@ export class NotificationsService {
         ...dto.data,
       },
     };
+    const options = { isPromotional };
 
     if (dto.target === NotificationTarget.USER) {
       if (!dto.userId) throw new BadRequestException('userId is required when target is user');
-      await this.sendToUser({ ...base, userId: dto.userId });
-      return { sent: 1 };
+      const notif = await this.sendToUser({ ...base, userId: dto.userId }, options);
+      return { sent: notif ? 1 : 0, skipped: notif ? 0 : 1 };
     }
 
     if (dto.target === NotificationTarget.ROLE) {
       if (!dto.role) throw new BadRequestException('role is required when target is role');
-      const sent = await this.sendToRole(dto.role, base);
-      return { sent: sent.length };
+      const users = await this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          userRoles: { some: { role: { name: dto.role } } },
+        },
+        select: { id: true },
+      });
+      let sent = 0;
+      let skipped = 0;
+      for (const u of users) {
+        const notif = await this.sendToUser({ ...base, userId: u.id }, options);
+        if (notif) sent += 1;
+        else skipped += 1;
+      }
+      return { sent, skipped };
     }
 
     const users = await this.prisma.user.findMany({
       where: { isActive: true, deletedAt: null },
       select: { id: true },
     });
-    await Promise.all(users.map((u) => this.sendToUser({ ...base, userId: u.id })));
-    return { sent: users.length };
+    let sent = 0;
+    let skipped = 0;
+    for (const u of users) {
+      const notif = await this.sendToUser({ ...base, userId: u.id }, options);
+      if (notif) sent += 1;
+      else skipped += 1;
+    }
+    return { sent, skipped };
   }
 
-  // ── Notifications listing ─────────────────────────────────────────────────
+  async listAdmin(page = 1, limit = 50, type?: NotificationType, userId?: string) {
+    const skip = (page - 1) * limit;
+    const where = {
+      ...(type && { type }),
+      ...(userId && { userId }),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.notification.count({ where }),
+    ]);
+    return { items, total, page, limit };
+  }
 
   async list(userId: string, page = 1, limit = 20, onlyUnread = false) {
     const skip = (page - 1) * limit;
@@ -234,9 +342,8 @@ export class NotificationsService {
     return { deleted: true };
   }
 
-  // ── Device tokens ─────────────────────────────────────────────────────────
-
   async registerDevice(userId: string, dto: RegisterDeviceDto) {
+    await this.getOrCreatePreferences(userId);
     return this.prisma.deviceToken.upsert({
       where: { userId_token: { userId, token: dto.token } },
       create: {
@@ -264,8 +371,6 @@ export class NotificationsService {
       orderBy: { lastUsedAt: 'desc' },
     });
   }
-
-  // ── Internal: push to all user devices ────────────────────────────────────
 
   private async pushToDevices(
     userId: string,
@@ -295,7 +400,6 @@ export class NotificationsService {
       }),
     ]);
 
-    // Cleanup invalid tokens
     if (invalidFcm.length) {
       await this.prisma.deviceToken.deleteMany({
         where: { userId, token: { in: invalidFcm } },

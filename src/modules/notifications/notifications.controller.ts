@@ -25,6 +25,8 @@ import { NotificationsService } from './notifications.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { TestNotificationDto } from './dto/test-notification.dto';
 import { SendNotificationDto } from './dto/send-notification.dto';
+import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
+import { AdminListNotificationsQueryDto } from './dto/admin-list-notifications.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
@@ -59,6 +61,42 @@ export class NotificationsController {
   })
   unreadCount(@CurrentUser() user: CurrentUserPayload) {
     return this.notifications.unreadCount(user.id).then((count) => ({ count }));
+  }
+
+  @Get('preferences')
+  @ApiOperation({
+    summary: 'Preferencias de notificaciones del usuario',
+    description: 'Devuelve push, email, promociones y WhatsApp (este último reservado).',
+  })
+  getPreferences(@CurrentUser() user: CurrentUserPayload) {
+    return this.notifications.getPreferences(user.id);
+  }
+
+  @Patch('preferences')
+  @ApiOperation({
+    summary: 'Actualizar preferencias de notificaciones',
+    description: 'Persiste las preferencias del usuario. WhatsApp aún no está habilitado.',
+  })
+  updatePreferences(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateNotificationPreferencesDto,
+  ) {
+    return this.notifications.updatePreferences(user.id, dto);
+  }
+
+  @Get('admin/list')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Historial de notificaciones (admin)',
+    description: 'Lista todas las notificaciones enviadas, con datos del destinatario. Paginado.',
+  })
+  adminList(@Query() query: AdminListNotificationsQueryDto) {
+    return this.notifications.listAdmin(
+      query.page ?? 1,
+      query.limit ?? 50,
+      query.type,
+      query.userId,
+    );
   }
 
   @Post('send')

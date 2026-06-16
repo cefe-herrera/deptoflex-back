@@ -1,12 +1,38 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { PublicCatalogService } from './public-catalog.service';
+import {
+  QueryPublicFlexListDto,
+  QueryPublicPropertiesListDto,
+  QueryPublicUnitsListDto,
+} from './dto/query-public-list.dto';
 
 @ApiTags('Public Catalog')
 @Controller('public')
 export class PublicCatalogController {
   constructor(private readonly publicCatalogService: PublicCatalogService) {}
+
+  @Public()
+  @Get('flex')
+  @ApiOperation({ summary: 'Listar propiedades flex activas (solo lectura, sin auth)' })
+  listFlex(@Query() query: QueryPublicFlexListDto) {
+    return this.publicCatalogService.listFlex(query);
+  }
+
+  @Public()
+  @Get('properties')
+  @ApiOperation({ summary: 'Listar propiedades temporales activas (solo lectura, sin auth)' })
+  listProperties(@Query() query: QueryPublicPropertiesListDto) {
+    return this.publicCatalogService.listProperties(query);
+  }
+
+  @Public()
+  @Get('units')
+  @ApiOperation({ summary: 'Listar unidades activas (solo lectura, sin auth)' })
+  listUnits(@Query() query: QueryPublicUnitsListDto) {
+    return this.publicCatalogService.listUnits(query);
+  }
 
   @Public()
   @Get('flex/:id')

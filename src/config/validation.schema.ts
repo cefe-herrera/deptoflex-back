@@ -14,7 +14,8 @@ export const validationSchema = Joi.object({
   R2_PUBLIC_BASE_URL: Joi.string().uri().required(),
   APP_ALLOWED_ORIGINS: Joi.string().default('http://localhost:3001'),
   APP_URL: Joi.string().uri().default('http://localhost:3000'),
+  FRONTEND_URL: Joi.string().uri().default('http://localhost:3001'),
   RESEND_API_KEY: Joi.string().required(),
-  EMAIL_FROM: Joi.string().email().default('onboarding@resend.dev'),
+  EMAIL_FROM: Joi.string().default('Weflex <no-reply@weflex.com.ar>'),
   GOOGLE_CLIENT_ID: Joi.string().required(),
 });

@@ -169,6 +169,7 @@ model User {
   deviceTokens         DeviceToken[]
   agendaContacts       AgendaContact[] @relation("AgendaOwner")
   agendaNotes          AgendaNote[]    @relation("AgendaNoteAuthor")
+  notificationPreferences UserNotificationPreferences?
 
   @@index([email])
   @@index([deletedAt])
@@ -787,6 +788,7 @@ enum NotificationType {
   AMBASSADOR_REJECTED
   PROPERTY_PUBLISHED
   COMMISSION_CREATED
+  PROMOTION
   GENERIC
 }
 
@@ -816,6 +818,18 @@ model Notification {
   @@index([userId, readAt])
   @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+model UserNotificationPreferences {
+  userId          String  @id @map("user_id") @db.Uuid
+  pushEnabled     Boolean @default(true) @map("push_enabled")
+  emailEnabled    Boolean @default(true) @map("email_enabled")
+  promosEnabled   Boolean @default(false) @map("promos_enabled")
+  whatsappEnabled Boolean @default(false) @map("whatsapp_enabled")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_preferences")
 }
 
 model DeviceToken {

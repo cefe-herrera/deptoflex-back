@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEnum,
   IsObject,
   IsOptional,
@@ -46,4 +47,9 @@ export class SendNotificationDto {
   @IsOptional()
   @IsObject()
   data?: Record<string, unknown>;
+
+  /** Si true junto con type GENERIC, se trata como promoción y respeta promosEnabled. */
+  @IsOptional()
+  @IsBoolean()
+  isPromotional?: boolean;
 }
