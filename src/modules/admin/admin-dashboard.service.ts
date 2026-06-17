@@ -130,7 +130,7 @@ export class AdminDashboardService {
       propertyId: query.propertyId ?? null,
       modality,
       disclaimer:
-        'Métricas basadas en reservas registradas en DeptoFlex. Puede diferir de Cloudbeds si hay reservas externas.',
+        'Métricas basadas en reservas registradas en WeFlex. Puede diferir de Cloudbeds si hay reservas externas.',
       today: todayKpis,
       activity,
       reservations,
