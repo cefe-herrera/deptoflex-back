@@ -12,6 +12,7 @@ import { CommissionRatesService } from '../commissions/commission-rates.service'
 import { CloudbedsService } from './cloudbeds.service';
 import { CreateReservationIntentDto } from './dto/create-reservation-intent.dto';
 import { ConfirmReservationDto } from './dto/confirm-reservation.dto';
+import type { ExternalRequestLogContext } from './external-request.types';
 import {
   BOOKING_PROVIDER,
   type BookingProvider,
@@ -60,15 +61,23 @@ export class ReservationIntentsService {
     }
 
     // Re-fetch availability so we redirect users with an up-to-date price/availability.
-    const fresh = await this.cloudbeds.searchAvailability({
-      propertyId: property.cloudbedsWidgetPropertyId,
-      checkin: dto.checkin,
-      checkout: dto.checkout,
-      currencyCode,
-      lang,
-      adults: dto.adults,
-      children: dto.children,
-    });
+    const fresh = await this.cloudbeds.searchAvailability(
+      {
+        propertyId: property.cloudbedsWidgetPropertyId,
+        checkin: dto.checkin,
+        checkout: dto.checkout,
+        currencyCode,
+        lang,
+        adults: dto.adults,
+        children: dto.children,
+      },
+      {
+        userId: context.userId,
+        propertyId: property.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      },
+    );
 
     const room = fresh.rooms.find((r) => r.roomTypeId === dto.roomTypeId);
     if (!room) {
@@ -141,16 +150,25 @@ export class ReservationIntentsService {
    * and register a Booking (source=CLOUDBEDS, status=CONFIRMED) plus its
    * Commission in our system. Idempotent on the Cloudbeds reservation id.
    */
-  async confirmFromCloudbeds(dto: ConfirmReservationDto) {
-    const conf = await this.provider.getConfirmation({ dataRes: dto.dataRes });
-
-    // Resolve the originating intent (canonical source for dates/property/ambassador).
+  async confirmFromCloudbeds(
+    dto: ConfirmReservationDto,
+    logContext?: ExternalRequestLogContext,
+  ) {
     const intent = dto.reservationIntentId
       ? await this.prisma.reservationIntent.findUnique({ where: { id: dto.reservationIntentId } })
       : null;
     if (dto.reservationIntentId && !intent) {
       throw new NotFoundException('Reservation intent not found');
     }
+
+    const conf = await this.provider.getConfirmation({
+      dataRes: dto.dataRes,
+      logContext: {
+        ...logContext,
+        userId: logContext?.userId ?? intent?.userId ?? undefined,
+        propertyId: intent?.propertyId ?? logContext?.propertyId,
+      },
+    });
 
     // Resolve the property: intent first, then the external id parsed from the page.
     let propertyId = intent?.propertyId ?? null;

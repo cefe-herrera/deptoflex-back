@@ -26,6 +26,18 @@ import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 import { PrepareBookingDto } from './dto/prepare-booking.dto';
 import { ConfirmReservationDto } from './dto/confirm-reservation.dto';
 import type { PrepareBookingResult } from './providers/booking-provider.interface';
+import type { ExternalRequestLogContext } from './external-request.types';
+
+function requestLogContext(
+  req: Request,
+  user?: CurrentUserPayload,
+): ExternalRequestLogContext {
+  return {
+    userId: user?.id,
+    ipAddress: req.ip,
+    userAgent: req.headers['user-agent'],
+  };
+}
 
 @ApiTags('Booking (Cloudbeds)')
 @ApiBearerAuth('access-token')
@@ -46,8 +58,12 @@ export class CloudbedsController {
     description:
       'Consulta el booking engine público de Cloudbeds para una propiedad local mapeada y devuelve habitaciones disponibles con tarifas, fotos, amenities, comparación con OTAs (si está disponible) y mapeo a unidades locales. Cachea resultados 5-15 min y persiste un snapshot de auditoría. Solo lectura: para concretar la reserva se debe usar `POST /reservation-intents` y redirigir al motor oficial. Rate-limited a 30 req/min.',
   })
-  searchAvailability(@Body() dto: SearchAvailabilityDto) {
-    return this.cloudbeds.searchAvailability(dto);
+  searchAvailability(
+    @Body() dto: SearchAvailabilityDto,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.cloudbeds.searchAvailability(dto, requestLogContext(req, user));
   }
 
   @Public()
@@ -60,8 +76,12 @@ export class CloudbedsController {
     description:
       'Llama al endpoint `calculateTotals` del motor público de Cloudbeds para una selección de tarifas. Devuelve el desglose de impuestos y fees, el subtotal, el grandTotal y el `cartToken` opaco que se usará en pasos posteriores del flujo de reserva. Solo lectura. Rate-limited a 30 req/min.',
   })
-  calculateTotals(@Body() dto: CalculateTotalsDto) {
-    return this.cloudbeds.calculateTotals(dto);
+  calculateTotals(
+    @Body() dto: CalculateTotalsDto,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.cloudbeds.calculateTotals(dto, requestLogContext(req, user));
   }
 
   @Public()
@@ -75,8 +95,10 @@ export class CloudbedsController {
   })
   prepareBooking(
     @Body() dto: PrepareBookingDto,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserPayload,
   ): Promise<PrepareBookingResult> {
-    return this.cloudbeds.prepareBooking(dto);
+    return this.cloudbeds.prepareBooking(dto, requestLogContext(req, user));
   }
 
   @Public()
@@ -88,8 +110,12 @@ export class CloudbedsController {
     description:
       'Recibe el token `data_res` devuelto por Cloudbeds en la URL de confirmación, descarga y parsea la página de confirmación, y registra la reserva en nuestro sistema como `Booking` (source=CLOUDBEDS, status=CONFIRMED) junto con su `Commission`. Si se pasa `reservationIntentId`, se usa para resolver propiedad, embajador y fechas canónicas. Idempotente por id de reserva de Cloudbeds.',
   })
-  confirmReservation(@Body() dto: ConfirmReservationDto) {
-    return this.intents.confirmFromCloudbeds(dto);
+  confirmReservation(
+    @Body() dto: ConfirmReservationDto,
+    @Req() req: Request,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.intents.confirmFromCloudbeds(dto, requestLogContext(req, user));
   }
 
   @Public()

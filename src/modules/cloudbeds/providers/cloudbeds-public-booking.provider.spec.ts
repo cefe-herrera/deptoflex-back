@@ -1,9 +1,15 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { CloudbedsPublicBookingProvider } from './cloudbeds-public-booking.provider';
 import type { RawCloudbedsResponse } from './cloudbeds-response.schema';
+import type { ExternalRequestService } from '../external-request.service';
 
 describe('CloudbedsPublicBookingProvider', () => {
   let provider: CloudbedsPublicBookingProvider;
+
+  const externalRequests = {
+    record: jest.fn(),
+    formBodyToJson: jest.fn(),
+  } as unknown as ExternalRequestService;
 
   const baseInput = {
     propertyExternalId: '179484',
@@ -14,7 +20,7 @@ describe('CloudbedsPublicBookingProvider', () => {
   };
 
   beforeEach(() => {
-    provider = new CloudbedsPublicBookingProvider();
+    provider = new CloudbedsPublicBookingProvider(externalRequests);
   });
 
   describe('buildFormBody', () => {

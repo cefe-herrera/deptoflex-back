@@ -328,6 +328,7 @@ export class ActivityService {
   private mapCommissionStatusLabel(status: CommissionStatus): string {
     const labels: Record<CommissionStatus, string> = {
       PENDING: 'Pendiente de cobro',
+      PENDING_VALIDATION: 'Pendiente de validación',
       APPROVED: 'Aprobada',
       PAID: 'Pagada',
       CANCELLED: 'Cancelada',

@@ -18,6 +18,7 @@ import {
 } from './providers/booking-provider.interface';
 import { CalculateTotalsDto } from './dto/calculate-totals.dto';
 import { PrepareBookingDto } from './dto/prepare-booking.dto';
+import type { ExternalRequestLogContext } from './external-request.types';
 
 export interface EnrichedRoom extends AvailableRoom {
   /** Local Units that match this Cloudbeds room_type. */
@@ -54,7 +55,10 @@ export class CloudbedsService {
     @Inject(BOOKING_PROVIDER) private readonly provider: BookingProvider,
   ) {}
 
-  async searchAvailability(dto: SearchAvailabilityDto): Promise<EnrichedAvailabilityResult> {
+  async searchAvailability(
+    dto: SearchAvailabilityDto,
+    logContext?: ExternalRequestLogContext,
+  ): Promise<EnrichedAvailabilityResult> {
     const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
     const lang = (dto.lang ?? 'es').toLowerCase();
 
@@ -78,6 +82,7 @@ export class CloudbedsService {
       lang,
       adults: dto.adults,
       children: dto.children,
+      logContext: { ...logContext, propertyId: property.id },
     });
 
     this.logger.log(`Availability result: ${JSON.stringify(result)}`);
@@ -117,7 +122,10 @@ export class CloudbedsService {
    * Returns taxes/fees breakdown, grand total and the `cartToken` required
    * by downstream booking steps.
    */
-  async calculateTotals( dto: CalculateTotalsDto ): Promise<CalculateTotalsResult> {
+  async calculateTotals(
+    dto: CalculateTotalsDto,
+    logContext?: ExternalRequestLogContext,
+  ): Promise<CalculateTotalsResult> {
     const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
     const lang = (dto.lang ?? 'es').toLowerCase();
 
@@ -144,6 +152,7 @@ export class CloudbedsService {
         adults: r.adults,
         kids: r.kids ?? 0,
       })),
+      logContext: { ...logContext, propertyId: property.id },
     });
   }
 
@@ -151,7 +160,10 @@ export class CloudbedsService {
    * Prepare a Cloudbeds reservation using a previously calculated cart token.
    * This creates the upstream reservation shell and returns Cloudbeds ids/status.
    */
-  async prepareBooking(dto: PrepareBookingDto): Promise<PrepareBookingResult> {
+  async prepareBooking(
+    dto: PrepareBookingDto,
+    logContext?: ExternalRequestLogContext,
+  ): Promise<PrepareBookingResult> {
     const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
     const lang = (dto.lang ?? 'es').toLowerCase();
 
@@ -191,6 +203,7 @@ export class CloudbedsService {
       cfarOffersPresented: dto.cfarOffersPresented ?? false,
       bookingEngineSource: dto.bookingEngineSource ?? 'hosted',
       iframe: dto.iframe ?? false,
+      logContext: { ...logContext, propertyId: property.id },
     });
   }
 

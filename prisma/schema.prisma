@@ -126,10 +126,24 @@ enum BookingSource {
 }
 
 enum CommissionStatus {
+  // Estado intermedio confiable: comision creada por un flujo server-to-server validado.
   PENDING
+  // Comision creada a partir del tracking de embajador (script inyectado en Cloudbeds).
+  // El origen es spoofable y no usa la API oficial de Cloudbeds, por eso queda
+  // pendiente de validacion manual/conciliacion antes de pasar a un estado confiable.
+  PENDING_VALIDATION
   APPROVED
   PAID
   CANCELLED
+}
+
+enum AmbassadorSessionStatus {
+  // El embajador genero el link y abrio el motor de Cloudbeds.
+  STARTED
+  // Recibimos el aviso de reserva (postMessage/fetch) pero aun sin asociar booking.
+  RECEIVED
+  // Reserva asociada a un Booking local.
+  CONFIRMED
 }
 
 enum PayoutStatus {
@@ -179,6 +193,7 @@ model User {
   cancellationRequestsRequested BookingCancellationRequest[] @relation("CancellationRequestedBy")
   cancellationRequestsReviewed  BookingCancellationRequest[] @relation("CancellationReviewedBy")
   roleAssignmentsMade           UserRole[]                   @relation("RoleAssignedBy")
+  externalRequests              ExternalRequest[]
 
   @@index([email])
   @@index([deletedAt])
@@ -285,6 +300,7 @@ model ProfessionalProfile {
   commissions              Commission[]
   flexCommissionOverrides      AmbassadorFlexCommission[]
   propertyCommissionOverrides  AmbassadorPropertyCommission[]
+  ambassadorBookingSessions    AmbassadorBookingSession[]
 
   @@index([status])
   @@map("professional_profiles")
@@ -389,6 +405,7 @@ model Property {
   reservationIntents    ReservationIntent[]
   bookings              Booking[]
   ambassadorOverrides   AmbassadorPropertyCommission[]
+  externalRequests      ExternalRequest[]
 
   @@index([status])
   @@index([companyId])
@@ -1158,6 +1175,51 @@ model AvailabilitySnapshot {
   @@map("availability_snapshots")
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTERNAL API REQUEST LOG (Cloudbeds, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ExternalRequestProvider {
+  CLOUDBEDS
+}
+
+enum ExternalRequestType {
+  ROOM
+  PROPERTY_INFO
+  CALCULATE_TOTALS
+  PREPARE
+  CONFIRMATION
+}
+
+model ExternalRequest {
+  id           String                  @id @default(uuid()) @db.Uuid
+  provider     ExternalRequestProvider @default(CLOUDBEDS)
+  type         ExternalRequestType
+  endpoint     String?                 @db.VarChar(500)
+  method       String?                 @db.VarChar(10)
+  requestJson  Json                    @map("request_json") @db.JsonB
+  responseJson Json?                   @map("response_json") @db.JsonB
+  httpStatus   Int?                    @map("http_status")
+  durationMs   Int?                    @map("duration_ms")
+  success      Boolean                 @default(true)
+  errorMessage String?                 @map("error_message") @db.Text
+  userId       String?                 @map("user_id") @db.Uuid
+  propertyId   String?                 @map("property_id") @db.Uuid
+  ipAddress    String?                 @map("ip_address") @db.VarChar(45)
+  userAgent    String?                 @map("user_agent") @db.VarChar(500)
+  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([type, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([propertyId])
+  @@index([provider, type])
+  @@index([createdAt(sort: Desc)])
+  @@map("external_requests")
+}
+
 model ReservationIntent {
   id           String                  @id @default(uuid()) @db.Uuid
   propertyId   String                  @map("property_id") @db.Uuid
@@ -1188,6 +1250,35 @@ model ReservationIntent {
   @@index([status, expiresAt])
   @@index([createdAt])
   @@map("reservation_intents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRACKING DE EMBAJADOR EN CLOUDBEDS
+//
+// Esta integracion NO usa la API oficial de Cloudbeds. El embajador abre el motor
+// publico de Cloudbeds con parametros en la URL (ambassador_id = professionalProfileId,
+// session_id) y un script personalizado inyectado en Cloudbeds nos avisa cuando se
+// crea la reserva (postMessage + fetch). Esta tabla guarda la sesion liviana previa
+// a abrir el motor para poder asociar despues la reserva con el embajador.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AmbassadorBookingSession {
+  // id = session_id (UUID) generado en el frontend antes de abrir Cloudbeds.
+  id                     String                  @id @db.Uuid
+  professionalProfileId  String                  @map("professional_profile_id") @db.Uuid
+  status                 AmbassadorSessionStatus @default(STARTED)
+  cloudbedsUrl           String                  @map("cloudbeds_url") @db.Text
+  // Booking local creado al recibir el aviso de reserva (si se pudo asociar).
+  bookingId              String?                 @unique @map("booking_id") @db.Uuid
+  // booking_id que reporta Cloudbeds (sirve para dedupe junto con el sessionId).
+  cloudbedsReservationId String?                 @map("cloudbeds_reservation_id") @db.VarChar(100)
+  createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+
+  professionalProfile    ProfessionalProfile     @relation(fields: [professionalProfileId], references: [id])
+
+  @@index([professionalProfileId])
+  @@map("ambassador_booking_sessions")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

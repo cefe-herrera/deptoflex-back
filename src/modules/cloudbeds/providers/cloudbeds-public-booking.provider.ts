@@ -1,6 +1,8 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ExternalRequestType } from '@prisma/client';
 import * as https from 'node:https';
 import { URL } from 'node:url';
+import { ExternalRequestService } from '../external-request.service';
 import {
   AvailabilityResult,
   AvailableRoom,
@@ -88,6 +90,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   private readonly cloudbedsLogResponseMaxChars = Number(
     process.env.CLOUDBEDS_LOG_RESPONSE_MAX_CHARS ?? 16_000,
   );
+
+  constructor(private readonly externalRequests: ExternalRequestService) {}
 
   private logCloudbedsRequest(
     operation: 'prepare' | 'confirmation',
@@ -201,6 +205,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
     let httpStatus = 0;
     let rawText = '';
+    let success = false;
+    let errorMessage: string | undefined;
     try {
       this.logger.log("httpPost endpoint=" + this.endpoint + " body=" + body);
       const { status, text } = await this.httpPost(this.endpoint, body);
@@ -232,11 +238,13 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       }
 
       const durationMs = Date.now() - startedAt;
+      success = true;
       return this.normalize(input, parseResult.data, httpStatus, durationMs);
     } catch (err) {
-      const durationMs = Date.now() - startedAt;
+      errorMessage = err instanceof Error ? err.message : String(err);
       if (err instanceof ServiceUnavailableException) throw err;
       if (err instanceof Error && err.name === 'AbortError') {
+        const durationMs = Date.now() - startedAt;
         this.logger.error(`Cloudbeds request timed out after ${durationMs}ms`);
         throw new ServiceUnavailableException('Booking engine timeout');
       }
@@ -244,6 +252,19 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         `Cloudbeds request failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new ServiceUnavailableException('Booking engine unreachable');
+    } finally {
+      this.externalRequests.record({
+        type: ExternalRequestType.ROOM,
+        endpoint: this.endpoint,
+        method: 'POST',
+        request: body,
+        responseText: rawText || undefined,
+        httpStatus: httpStatus || undefined,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+        logContext: input.logContext,
+      });
     }
   }
 
@@ -254,6 +275,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
     let httpStatus = 0;
     let rawText = '';
+    let success = false;
+    let errorMessage: string | undefined;
     try {
       this.logger.log(`httpPost endpoint=${this.totalsEndpoint} body=${body}`);
       const { status, text } = await this.httpPost(this.totalsEndpoint, body);
@@ -295,11 +318,13 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       }
 
       const durationMs = Date.now() - startedAt;
+      success = true;
       return this.normalizeTotals(input, parsed.data, httpStatus, durationMs);
     } catch (err) {
-      const durationMs = Date.now() - startedAt;
+      errorMessage = err instanceof Error ? err.message : String(err);
       if (err instanceof ServiceUnavailableException) throw err;
       if (err instanceof Error && err.name === 'AbortError') {
+        const durationMs = Date.now() - startedAt;
         this.logger.error(`Cloudbeds totals request timed out after ${durationMs}ms`);
         throw new ServiceUnavailableException('Booking engine timeout');
       }
@@ -307,6 +332,19 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         `Cloudbeds totals request failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new ServiceUnavailableException('Booking engine unreachable');
+    } finally {
+      this.externalRequests.record({
+        type: ExternalRequestType.CALCULATE_TOTALS,
+        endpoint: this.totalsEndpoint,
+        method: 'POST',
+        request: body,
+        responseText: rawText || undefined,
+        httpStatus: httpStatus || undefined,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+        logContext: input.logContext,
+      });
     }
   }
 
@@ -319,6 +357,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
     let httpStatus = 0;
     let rawText = '';
+    let success = false;
+    let errorMessage: string | undefined;
     try {
       const { status, text } = await this.httpPost(this.prepareEndpoint, body);
       httpStatus = status;
@@ -374,11 +414,13 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
       const result = this.normalizePrepare(input, parsed, httpStatus, durationMs);
       this.logPrepareResultSummary(result);
+      success = true;
       return result;
     } catch (err) {
-      const durationMs = Date.now() - startedAt;
+      errorMessage = err instanceof Error ? err.message : String(err);
       if (err instanceof ServiceUnavailableException) throw err;
       if (err instanceof Error && err.name === 'AbortError') {
+        const durationMs = Date.now() - startedAt;
         this.logger.error(`Cloudbeds prepare request timed out after ${durationMs}ms`);
         throw new ServiceUnavailableException('Booking engine timeout');
       }
@@ -386,6 +428,19 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         `Cloudbeds prepare request failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new ServiceUnavailableException('Booking engine unreachable');
+    } finally {
+      this.externalRequests.record({
+        type: ExternalRequestType.PREPARE,
+        endpoint: this.prepareEndpoint,
+        method: 'POST',
+        request: body,
+        responseText: rawText || undefined,
+        httpStatus: httpStatus || undefined,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+        logContext: input.logContext,
+      });
     }
   }
 
@@ -469,6 +524,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
     let httpStatus = 0;
     let rawText = '';
+    let success = false;
+    let errorMessage: string | undefined;
     try {
       const { status, text } = await this.httpGet(url);
       httpStatus = status;
@@ -483,11 +540,13 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
 
       const result = this.parseConfirmation(rawText, httpStatus, durationMs);
       this.logConfirmationResultSummary(result);
+      success = true;
       return result;
     } catch (err) {
-      const durationMs = Date.now() - startedAt;
+      errorMessage = err instanceof Error ? err.message : String(err);
       if (err instanceof ServiceUnavailableException) throw err;
       if (err instanceof Error && err.name === 'AbortError') {
+        const durationMs = Date.now() - startedAt;
         this.logger.error(`Cloudbeds confirmation request timed out after ${durationMs}ms`);
         throw new ServiceUnavailableException('Booking engine timeout');
       }
@@ -495,6 +554,19 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         `Cloudbeds confirmation request failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       throw new ServiceUnavailableException('Booking engine unreachable');
+    } finally {
+      this.externalRequests.record({
+        type: ExternalRequestType.CONFIRMATION,
+        endpoint: this.confirmationEndpoint,
+        method: 'GET',
+        request: { data_res: input.dataRes },
+        responseText: rawText || undefined,
+        httpStatus: httpStatus || undefined,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+        logContext: input.logContext,
+      });
     }
   }
 

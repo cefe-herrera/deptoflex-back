@@ -6,6 +6,7 @@ import { CloudbedsController } from './cloudbeds.controller';
 import { CloudbedsService } from './cloudbeds.service';
 import { ReservationIntentsService } from './reservation-intents.service';
 import { AvailabilitySnapshotsService } from './availability-snapshots.service';
+import { ExternalRequestService } from './external-request.service';
 import { CloudbedsPublicBookingProvider } from './providers/cloudbeds-public-booking.provider';
 import { BOOKING_PROVIDER } from './providers/booking-provider.interface';
 
@@ -23,6 +24,7 @@ import { BOOKING_PROVIDER } from './providers/booking-provider.interface';
     CloudbedsService,
     ReservationIntentsService,
     AvailabilitySnapshotsService,
+    ExternalRequestService,
     CloudbedsPublicBookingProvider,
     {
       provide: BOOKING_PROVIDER,

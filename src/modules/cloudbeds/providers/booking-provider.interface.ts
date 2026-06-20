@@ -7,6 +7,8 @@
  * changes to consumer code.
  */
 
+import type { ExternalRequestLogContext } from '../external-request.types';
+
 export interface SearchAvailabilityInput {
   /** External property identifier (e.g. Cloudbeds widget_property). */
   propertyExternalId: string;
@@ -21,6 +23,8 @@ export interface SearchAvailabilityInput {
   /** Optional adults/children for providers that support occupancy in search. */
   adults?: number;
   children?: number;
+  /** Contexto de auditoría (usuario, propiedad local, IP). */
+  logContext?: ExternalRequestLogContext;
 }
 
 export interface NightlyRate {
@@ -87,6 +91,7 @@ export interface CalculateTotalsInput {
   currencyCode: string;
   lang: string;
   rates: CalculateTotalsRateInput[];
+  logContext?: ExternalRequestLogContext;
 }
 
 export interface TotalsTaxOrFee {
@@ -158,6 +163,7 @@ export interface PrepareBookingInput {
   cfarOffersPresented: boolean;
   bookingEngineSource: string;
   iframe: boolean;
+  logContext?: ExternalRequestLogContext;
 }
 
 export interface PrepareBookingResult {
@@ -195,6 +201,7 @@ export interface ReservationRedirectInput {
 export interface ConfirmationInput {
   /** Opaque `data_res` token from the Cloudbeds confirmation URL. */
   dataRes: string;
+  logContext?: ExternalRequestLogContext;
 }
 
 export interface ConfirmationResult {

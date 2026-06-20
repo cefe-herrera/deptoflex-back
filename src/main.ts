@@ -15,8 +15,23 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(compression());
+
+  // CORS: orígenes de la app (con credenciales, p/ requests autenticadas) +
+  // el motor público de Cloudbeds, que envía el aviso de reserva del embajador
+  // al endpoint público /ambassadors/cloudbeds-reservation. Ese aviso NO lleva
+  // credenciales ni tokens (no se exponen secretos en el JS público de Cloudbeds).
+  const appOrigins = config.get<string[]>('app.allowedOrigins') ?? [];
+  const cloudbedsOrigin = config.get<string>('app.cloudbedsOrigin');
+  const allowedOrigins = new Set(
+    [...appOrigins, cloudbedsOrigin].filter((o): o is string => !!o).map((o) => o.trim()),
+  );
   app.enableCors({
-    origin: config.get<string[]>('app.allowedOrigins'),
+    origin: (origin, callback) => {
+      // Permitir requests sin Origin (curl, server-to-server) y los orígenes listados.
+      // Para orígenes no permitidos se deniega sin lanzar error (el navegador bloquea),
+      // preservando el comportamiento previo basado en lista de orígenes.
+      callback(null, !origin || allowedOrigins.has(origin));
+    },
     credentials: true,
   });
 

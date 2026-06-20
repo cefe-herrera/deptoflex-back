@@ -33,6 +33,7 @@ import { AgendaModule } from './modules/agenda/agenda.module';
 import { ActivityModule } from './modules/activity/activity.module';
 import { PublicCatalogModule } from './modules/public-catalog/public-catalog.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { AmbassadorsModule } from './modules/ambassadors/ambassadors.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -72,6 +73,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ActivityModule,
     PublicCatalogModule,
     PaymentsModule,
+    AmbassadorsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
