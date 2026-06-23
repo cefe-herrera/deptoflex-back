@@ -15,11 +15,12 @@ export class PropertyFlexService {
   ) {}
 
   async create(dto: CreatePropertyFlexDto) {
-    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, ...rest } = dto;
+    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, minMonths, ...rest } = dto;
     return this.prisma.propertyFlex.create({
       data: {
         ...rest,
-        monthlyRate: String(monthlyRate),
+        monthlyRate: String(monthlyRate ?? 0),
+        minMonths: minMonths ?? 1,
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
         ...(commissionRate != null && { commissionRate: String(commissionRate) }),
         ...(reservationPaymentAmount != null && { reservationPaymentAmount: String(reservationPaymentAmount) }),
@@ -78,12 +79,13 @@ export class PropertyFlexService {
 
   async update(id: string, dto: UpdatePropertyFlexDto) {
     await this.findOne(id);
-    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, ...rest } = dto;
+    const { address, monthlyRate, depositAmount, commissionRate, reservationPaymentAmount, minMonths, ...rest } = dto;
     const updated = await this.prisma.propertyFlex.update({
       where: { id },
       data: {
         ...rest,
-        ...(monthlyRate != null && { monthlyRate: String(monthlyRate) }),
+        ...(monthlyRate != null && { monthlyRate: String(Math.max(0, monthlyRate)) }),
+        ...(minMonths != null && { minMonths }),
         ...(depositAmount != null && { depositAmount: String(depositAmount) }),
         ...(commissionRate != null && { commissionRate: String(commissionRate) }),
         ...(reservationPaymentAmount !== undefined && {

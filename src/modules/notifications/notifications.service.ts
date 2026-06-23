@@ -190,6 +190,30 @@ export class NotificationsService {
     ]);
   }
 
+  async notifyFlexReservationPaid(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        propertyFlex: { select: { name: true } },
+        professionalProfile: { select: { userId: true } },
+      },
+    });
+    if (!booking?.professionalProfile?.userId) return;
+
+    const placeName = booking.propertyFlex?.name ?? 'la propiedad';
+
+    await this.sendToUser({
+      userId: booking.professionalProfile.userId,
+      type: NotificationType.BOOKING_CONFIRMED,
+      title: 'Pago de reserva recibido',
+      body: `${booking.clientName} pagó la reserva en ${placeName}. La reserva quedó confirmada — coordiná los próximos pasos con el huésped.`,
+      data: {
+        bookingId: booking.id,
+        url: '/dashboard/activity',
+      },
+    });
+  }
+
   async notifyBookingConfirmed(bookingId: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },

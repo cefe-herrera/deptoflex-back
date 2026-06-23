@@ -35,10 +35,11 @@ export class CreatePropertyFlexDto {
   @IsInt() @Min(1) @Max(50) maxOccupancy: number;
   @IsOptional() @Transform(({ value }) => value != null ? String(value) : undefined) @IsString() sizeM2?: string;
 
-  @IsNumber() @Min(0) monthlyRate: number;
+  /** Puede ser 0 si los planes de tarifas definen el alquiler mensual. */
+  @IsOptional() @IsNumber() @Min(0) monthlyRate?: number;
   @IsOptional() @IsString() @MaxLength(3) currency?: string;
-  @IsOptional() @IsInt() @Min(1) minMonths?: number;
-  @IsOptional() @IsInt() @Min(1) maxMonths?: number;
+  @IsOptional() @IsInt() @Min(0) minMonths?: number;
+  @IsOptional() @IsInt() @Min(0) maxMonths?: number;
   @IsOptional() @IsNumber() @Min(0) depositAmount?: number;
   @IsOptional() @IsNumber() @Min(0) @Max(100) commissionRate?: number;
   @IsOptional() @IsNumber() @Min(0) reservationPaymentAmount?: number;

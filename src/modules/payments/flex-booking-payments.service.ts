@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,7 +18,9 @@ import {
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { FlexBookingsService } from '../flex-bookings/flex-bookings.service';
+import { EmailService } from '../email/email.service';
 import { MercadoPagoService } from './mercadopago.service';
+import { validateMercadoPagoWebhookSignature } from './mercadopago-webhook.util';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
@@ -28,6 +31,7 @@ export class FlexBookingPaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
     private mercadoPago: MercadoPagoService,
+    private emailService: EmailService,
     @Inject(forwardRef(() => FlexBookingsService))
     private flexBookings: FlexBookingsService,
   ) {}
@@ -39,6 +43,29 @@ export class FlexBookingPaymentsService {
   buildPaymentPageUrl(paymentToken: string): string {
     const frontendUrl = this.config.get<string>('app.frontendUrl') ?? 'http://localhost:3001';
     return `${frontendUrl.replace(/\/$/, '')}/p/flex/reserva/${paymentToken}/pagar`;
+  }
+
+  async notifyGuestPaymentRequired(input: {
+    clientEmail: string;
+    clientName: string;
+    propertyName: string;
+    amount: number;
+    currency: string;
+    paymentToken: string;
+    startDate: Date;
+    endDate: Date;
+  }) {
+    const paymentUrl = this.buildPaymentPageUrl(input.paymentToken);
+    await this.emailService.sendFlexReservationPaymentEmail(
+      input.clientEmail,
+      input.clientName,
+      input.propertyName,
+      input.amount,
+      input.currency,
+      paymentUrl,
+      input.startDate,
+      input.endDate,
+    );
   }
 
   async getPaymentLinkForBooking(flexBookingId: string, user: CurrentUserPayload) {
@@ -158,10 +185,28 @@ export class FlexBookingPaymentsService {
     return { checkoutUrl };
   }
 
-  async handleWebhook(query: Record<string, string | undefined>) {
+  async handleWebhook(
+    query: Record<string, string | undefined>,
+    headers?: { xSignature?: string; xRequestId?: string; dataId?: string },
+  ) {
     if (!this.mercadoPago.isConfigured()) {
       this.logger.warn('Mercado Pago webhook received but MP is not configured');
       return { ok: true };
+    }
+
+    const webhookSecret = this.config.get<string>('mercadopago.webhookSecret') ?? '';
+    if (webhookSecret) {
+      const valid = validateMercadoPagoWebhookSignature(
+        { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
+        headers?.dataId,
+        webhookSecret,
+      );
+      if (!valid) {
+        this.logger.warn('Invalid Mercado Pago webhook signature');
+        throw new UnauthorizedException('Invalid webhook signature');
+      }
+    } else {
+      this.logger.warn('MERCADOPAGO_WEBHOOK_SECRET not set — webhook signature not validated');
     }
 
     const type = query.type ?? query.topic;
@@ -273,6 +318,20 @@ export class FlexBookingPaymentsService {
     });
 
     await this.flexBookings.confirmFromPayment(flexBookingId, payment.id);
+
+    const confirmed = await this.prisma.flexBooking.findFirst({
+      where: { id: flexBookingId, deletedAt: null },
+      include: { propertyFlex: { select: { name: true } } },
+    });
+    if (confirmed?.clientEmail?.trim()) {
+      this.emailService.sendFlexReservationConfirmedEmail(
+        confirmed.clientEmail.trim(),
+        confirmed.clientName,
+        confirmed.propertyFlex.name,
+      ).catch((err) =>
+        this.logger.error(`sendFlexReservationConfirmedEmail failed for ${flexBookingId}`, err),
+      );
+    }
   }
 
   private mapMpStatus(status: string): FlexBookingPaymentStatus | null {

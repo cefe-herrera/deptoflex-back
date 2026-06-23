@@ -290,6 +290,8 @@ export class ActivityService {
     return {
       id: b.id,
       state: this.mapState(b.status),
+      status: b.status,
+      statusLabel: this.mapStatusLabel(b.status),
       type: isFlex ? 'FLEX' : 'TEMPORARIO',
       propertyType: propType ? PROPERTY_TYPE_LABELS[propType] : 'Propiedad',
       buildingName: prop?.name ?? b.unit?.name ?? 'Sin nombre',

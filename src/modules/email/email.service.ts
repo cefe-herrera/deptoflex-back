@@ -112,6 +112,68 @@ export class EmailService {
         });
     }
 
+    async sendFlexReservationPaymentEmail(
+        email: string,
+        clientName: string,
+        propertyName: string,
+        amount: number,
+        currency: string,
+        paymentUrl: string,
+        startDate: Date,
+        endDate: Date,
+    ): Promise<boolean> {
+        const fmt = (d: Date) => d.toLocaleDateString('es-AR', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+        });
+        const amountLabel = new Intl.NumberFormat('es-AR', {
+            style: 'currency',
+            currency: currency || 'ARS',
+            maximumFractionDigits: 0,
+        }).format(amount);
+
+        return this.send({
+            to: email,
+            subject: 'Weflex - Completá el pago de tu reserva',
+            html: this.layout(
+                'Pago de reserva',
+                `
+          <p>Hola ${clientName},</p>
+          <p>Tu reserva en <strong>${propertyName}</strong> fue registrada.</p>
+          <p>Para confirmarla, completá el pago de reserva de <strong>${amountLabel}</strong> con Mercado Pago.</p>
+          <ul style="color:#64748b;font-size:14px;padding-left:20px;">
+            <li>Ingreso: ${fmt(startDate)}</li>
+            <li>Fin estimado: ${fmt(endDate)}</li>
+          </ul>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="${paymentUrl}" style="${this.buttonStyle()}">Pagar con Mercado Pago</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;">Este monto no es el alquiler mensual: es el pago para confirmar la reserva. Tu embajador WeFlex coordinará el resto del proceso.</p>
+        `,
+            ),
+        });
+    }
+
+    async sendFlexReservationConfirmedEmail(
+        email: string,
+        clientName: string,
+        propertyName: string,
+    ): Promise<boolean> {
+        return this.send({
+            to: email,
+            subject: 'Weflex - Reserva confirmada',
+            html: this.layout(
+                '¡Reserva confirmada!',
+                `
+          <p>Hola ${clientName},</p>
+          <p>Recibimos tu pago de reserva para <strong>${propertyName}</strong>.</p>
+          <p>Tu reserva quedó confirmada. Tu embajador WeFlex se pondrá en contacto para coordinar los próximos pasos.</p>
+        `,
+            ),
+        });
+    }
+
     private async send(payload: { to: string; subject: string; html: string }): Promise<boolean> {
         try {
             const { data, error } = await this.resend.emails.send({

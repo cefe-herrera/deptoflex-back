@@ -169,6 +169,21 @@ export class FlexBookingsService {
       this.logger.error(`notifyBookingCreated failed for ${bookingId}`, err),
     );
 
+    if (reservationPaymentAmount > 0 && flexBooking.paymentToken && dto.clientEmail?.trim()) {
+      this.flexBookingPayments.notifyGuestPaymentRequired({
+        clientEmail: dto.clientEmail.trim(),
+        clientName: dto.clientName,
+        propertyName: flexBooking.propertyFlex.name,
+        amount: reservationPaymentAmount,
+        currency,
+        paymentToken: flexBooking.paymentToken,
+        startDate: start,
+        endDate: end,
+      }).catch((err) =>
+        this.logger.error(`notifyGuestPaymentRequired failed for ${flexBooking.id}`, err),
+      );
+    }
+
     return flexBooking;
   }
 
@@ -211,8 +226,8 @@ export class FlexBookingsService {
     });
 
     if (confirmedBookingId) {
-      this.notifications.notifyBookingConfirmed(confirmedBookingId).catch((err) =>
-        this.logger.error(`notifyBookingConfirmed failed for ${confirmedBookingId}`, err),
+      this.notifications.notifyFlexReservationPaid(confirmedBookingId).catch((err) =>
+        this.logger.error(`notifyFlexReservationPaid failed for ${confirmedBookingId}`, err),
       );
     }
 

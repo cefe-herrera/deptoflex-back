@@ -1,6 +1,9 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { FlexBookingPaymentsService } from './flex-booking-payments.service';
 
@@ -16,8 +19,17 @@ export class PaymentsWebhookController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   @ApiOperation({ summary: 'Webhook de Mercado Pago (público)' })
-  handleMercadoPago(@Query() query: Record<string, string | undefined>) {
-    return this.payments.handleWebhook(query);
+  handleMercadoPago(
+    @Query() query: Record<string, string | undefined>,
+    @Req() req: Request,
+  ) {
+    const xSignature = req.headers['x-signature'];
+    const xRequestId = req.headers['x-request-id'];
+    return this.payments.handleWebhook(query, {
+      xSignature: typeof xSignature === 'string' ? xSignature : xSignature?.[0],
+      xRequestId: typeof xRequestId === 'string' ? xRequestId : xRequestId?.[0],
+      dataId: query['data.id'] ?? query.id,
+    });
   }
 }
 
