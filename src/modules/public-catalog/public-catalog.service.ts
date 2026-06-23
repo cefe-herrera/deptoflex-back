@@ -107,6 +107,7 @@ export class PublicCatalogService {
               name: true,
               address: true,
               cloudbedsWidgetPropertyId: true,
+              cloudbedsBookingSlug: true,
             },
           },
           unitImages: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
