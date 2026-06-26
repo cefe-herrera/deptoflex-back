@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CloudbedsService } from './cloudbeds.service';
 import type { AvailabilitySnapshotsService } from './availability-snapshots.service';
+import type { AvailabilityCacheService } from './availability-cache.service';
 import type { BookingProvider, AvailabilityResult } from './providers/booking-provider.interface';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -20,7 +21,20 @@ const fakeProvider = (): jest.Mocked<BookingProvider> => ({
 });
 
 const fakeSnapshots = (): jest.Mocked<AvailabilitySnapshotsService> =>
-  ({ record: jest.fn().mockResolvedValue(undefined) }) as unknown as jest.Mocked<AvailabilitySnapshotsService>;
+  ({
+    record: jest.fn().mockResolvedValue(undefined),
+    findLatestForSearch: jest.fn().mockResolvedValue(null),
+  }) as unknown as jest.Mocked<AvailabilitySnapshotsService>;
+
+const fakeCache = (): jest.Mocked<AvailabilityCacheService> =>
+  ({
+    buildKey: jest.fn().mockReturnValue('cache-key'),
+    get: jest.fn().mockReturnValue(null),
+    getStale: jest.fn().mockReturnValue(null),
+    set: jest.fn(),
+    invalidate: jest.fn(),
+    prune: jest.fn(),
+  }) as unknown as jest.Mocked<AvailabilityCacheService>;
 
 const fakePrisma = (
   property: { id: string; name: string; cloudbedsWidgetPropertyId: string | null } | null,
@@ -70,6 +84,7 @@ describe('CloudbedsService', () => {
     it('rejects past checkin', async () => {
       const svc = new CloudbedsService(
         fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: '179484' }),
+        fakeCache(),
         fakeSnapshots(),
         fakeProvider(),
       );
@@ -85,6 +100,7 @@ describe('CloudbedsService', () => {
     it('rejects checkout <= checkin', async () => {
       const svc = new CloudbedsService(
         fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: '179484' }),
+        fakeCache(),
         fakeSnapshots(),
         fakeProvider(),
       );
@@ -102,6 +118,7 @@ describe('CloudbedsService', () => {
     it('throws NotFound when property does not exist', async () => {
       const svc = new CloudbedsService(
         fakePrisma(null),
+        fakeCache(),
         fakeSnapshots(),
         fakeProvider(),
       );
@@ -117,6 +134,7 @@ describe('CloudbedsService', () => {
     it('throws BadRequest when property has no cloudbedsWidgetPropertyId', async () => {
       const svc = new CloudbedsService(
         fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: null }),
+        fakeCache(),
         fakeSnapshots(),
         fakeProvider(),
       );
@@ -150,7 +168,7 @@ describe('CloudbedsService', () => {
         ],
       );
 
-      const svc = new CloudbedsService(prisma, snapshots, provider);
+      const svc = new CloudbedsService(prisma, fakeCache(), snapshots, provider);
       const out = await svc.searchAvailability({
         propertyId: 'p1',
         checkin: futureDate(7),
@@ -176,6 +194,7 @@ describe('CloudbedsService', () => {
       );
       const svc = new CloudbedsService(
         fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: '179484' }),
+        fakeCache(),
         fakeSnapshots(),
         provider,
       );

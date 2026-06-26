@@ -91,6 +91,15 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     process.env.CLOUDBEDS_LOG_RESPONSE_MAX_CHARS ?? 16_000,
   );
 
+  /** Max concurrent upstream requests to Cloudbeds (shared across all operations). */
+  private readonly maxConcurrent = Number(process.env.CLOUDBEDS_MAX_CONCURRENT ?? 2);
+
+  /** Retryable upstream HTTP statuses (rate limits / transient errors). */
+  private readonly retryableStatuses = new Set([429, 502, 503, 504]);
+
+  private activeRequests = 0;
+  private readonly requestWaiters: Array<() => void> = [];
+
   constructor(private readonly externalRequests: ExternalRequestService) {}
 
   private logCloudbedsRequest(
@@ -209,8 +218,8 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     let errorMessage: string | undefined;
     try {
       this.logger.log("httpPost endpoint=" + this.endpoint + " body=" + body);
-      const { status, text } = await this.httpPost(this.endpoint, body);
-      this.logger.log("httpPost status=" + status + " text=" + text);
+      const { status, text } = await this.httpPostWithRetry(this.endpoint, body);
+      this.logger.log("httpPost status=" + status + " text=" + text.slice(0, 500));
       httpStatus = status;
       rawText = text;
 
@@ -218,6 +227,9 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         this.logger.warn(
           `Cloudbeds returned non-OK status ${httpStatus} for property=${input.propertyExternalId} body="${rawText.slice(0, 500).replace(/\s+/g, ' ')}"`,
         );
+        if (status === 429) {
+          throw new ServiceUnavailableException('Booking engine rate limited');
+        }
         throw new ServiceUnavailableException('Booking engine upstream error');
       }
 
@@ -449,8 +461,55 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
    * sec-fetch-* and accept-language headers that Cloudbeds' nginx rejects
    * with 403.
    */
+  private async httpPostWithRetry(
+    endpoint: string,
+    body: string,
+    maxAttempts = 3,
+  ): Promise<{ status: number; text: string }> {
+    let lastResult: { status: number; text: string } | null = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      lastResult = await this.httpPost(endpoint, body);
+      if (!this.retryableStatuses.has(lastResult.status) || attempt === maxAttempts) {
+        return lastResult;
+      }
+
+      const delayMs = Math.min(500 * 2 ** (attempt - 1), 4000);
+      this.logger.warn(
+        `Cloudbeds returned ${lastResult.status}; retry ${attempt}/${maxAttempts - 1} in ${delayMs}ms`,
+      );
+      await this.sleep(delayMs);
+    }
+
+    return lastResult ?? { status: 0, text: '' };
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async acquireRequestSlot(): Promise<void> {
+    if (this.activeRequests < this.maxConcurrent) {
+      this.activeRequests++;
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      this.requestWaiters.push(() => {
+        this.activeRequests++;
+        resolve();
+      });
+    });
+  }
+
+  private releaseRequestSlot(): void {
+    this.activeRequests = Math.max(0, this.activeRequests - 1);
+    const next = this.requestWaiters.shift();
+    if (next) next();
+  }
+
   private httpPost(endpoint: string, body: string): Promise<{ status: number; text: string }> {
-    return new Promise((resolve, reject) => {
+    return this.runWithConcurrencyLimit(() => new Promise((resolve, reject) => {
       const url = new URL(endpoint);
       const req = https.request(
         {
@@ -481,7 +540,16 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       req.on('error', reject);
       req.write(body);
       req.end();
-    });
+    }));
+  }
+
+  private async runWithConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
+    await this.acquireRequestSlot();
+    try {
+      return await fn();
+    } finally {
+      this.releaseRequestSlot();
+    }
   }
 
   buildReservationRedirectUrl(input: ReservationRedirectInput): string {

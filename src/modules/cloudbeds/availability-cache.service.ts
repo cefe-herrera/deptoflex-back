@@ -35,6 +35,16 @@ export class AvailabilityCacheService {
     const entry = this.store.get(key);
     if (!entry) return null;
     if (entry.expiresAt < Date.now()) {
+      return null;
+    }
+    return entry.value;
+  }
+
+  /** Returns expired cache entries as a last-resort fallback when Cloudbeds is unavailable. */
+  getStale(key: string, maxStaleMs: number = 24 * 60 * 60 * 1000): AvailabilityResult | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt + maxStaleMs < Date.now()) {
       this.store.delete(key);
       return null;
     }

@@ -4,8 +4,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AvailabilityCacheService } from './availability-cache.service';
 import { AvailabilitySnapshotsService } from './availability-snapshots.service';
 import { SearchAvailabilityDto } from './dto/search-availability.dto';
 import {
@@ -51,6 +53,7 @@ export class CloudbedsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly cache: AvailabilityCacheService,
     private readonly snapshots: AvailabilitySnapshotsService,
     @Inject(BOOKING_PROVIDER) private readonly provider: BookingProvider,
   ) {}
@@ -69,25 +72,66 @@ export class CloudbedsService {
     });
     if (!property) throw new NotFoundException('Property not found');
     if (!property.cloudbedsWidgetPropertyId) {
-      throw new BadRequestException('Property has no Cloudbeds widget_property mapping');
+      throw new BadRequestException('Property has no Cloudbeds widget mapping');
     }
 
-    this.logger.log(`Searching availability for property ${property.id}`);
-
-    const result = await this.provider.searchAvailability({
-      propertyExternalId: property.cloudbedsWidgetPropertyId,
+    const cacheKey = this.cache.buildKey({
+      propertyId: property.cloudbedsWidgetPropertyId,
       checkin: dto.checkin,
       checkout: dto.checkout,
       currencyCode,
       lang,
-      adults: dto.adults,
-      children: dto.children,
-      logContext: { ...logContext, propertyId: property.id },
     });
 
-    this.logger.log(`Availability result: ${JSON.stringify(result)}`);
+    const cached = this.cache.get(cacheKey);
+    if (cached) {
+      this.logger.debug(`Availability cache hit for property ${property.id}`);
+      return this.buildEnrichedResponse(property, dto, cached, { fromCache: true });
+    }
 
-    // Fire-and-forget snapshot persistence.
+    this.logger.log(`Searching availability for property ${property.id}`);
+
+    let result: AvailabilityResult;
+    try {
+      result = await this.provider.searchAvailability({
+        propertyExternalId: property.cloudbedsWidgetPropertyId,
+        checkin: dto.checkin,
+        checkout: dto.checkout,
+        currencyCode,
+        lang,
+        adults: dto.adults,
+        children: dto.children,
+        logContext: { ...logContext, propertyId: property.id },
+      });
+      this.cache.set(cacheKey, result);
+    } catch (err) {
+      const staleCache = this.cache.getStale(cacheKey);
+      if (staleCache) {
+        this.logger.warn(
+          `Cloudbeds unavailable for property ${property.id}; serving stale cache`,
+        );
+        return this.buildEnrichedResponse(property, dto, staleCache, { fromCache: true, stale: true });
+      }
+
+      const snapshot = await this.snapshots.findLatestForSearch({
+        propertyId: property.id,
+        checkin: dto.checkin,
+        checkout: dto.checkout,
+        currencyCode,
+        lang,
+      });
+      if (snapshot) {
+        this.logger.warn(
+          `Cloudbeds unavailable for property ${property.id}; serving latest snapshot`,
+        );
+        return this.buildEnrichedResponse(property, dto, snapshot, { fromSnapshot: true, stale: true });
+      }
+
+      throw err instanceof ServiceUnavailableException
+        ? err
+        : new ServiceUnavailableException('Booking engine unreachable');
+    }
+
     void this.snapshots.record({
       propertyId: property.id,
       checkin: dto.checkin,
@@ -96,12 +140,19 @@ export class CloudbedsService {
       lang,
       result,
     });
-    
-    this.logger.log(`Snapshot recorded for property ${property.id}`);
 
+    return this.buildEnrichedResponse(property, dto, result);
+  }
+
+  private async buildEnrichedResponse(
+    property: { id: string; name: string; cloudbedsWidgetPropertyId: string | null },
+    dto: SearchAvailabilityDto,
+    result: AvailabilityResult,
+    metaExtra?: Record<string, unknown>,
+  ): Promise<EnrichedAvailabilityResult> {
+    const currencyCode = (dto.currencyCode ?? 'ARS').toUpperCase();
+    const lang = (dto.lang ?? 'es').toLowerCase();
     const enrichedRooms = await this.enrichWithLocalUnits(property.id, result.rooms);
-
-    this.logger.log(`Enriched rooms: ${JSON.stringify(enrichedRooms)}`);
 
     return {
       propertyId: property.id,
@@ -113,7 +164,10 @@ export class CloudbedsService {
       lang,
       totalAvailable: result.totalAvailable,
       rooms: enrichedRooms,
-      meta: result.meta,
+      meta: {
+        ...(result.meta ?? {}),
+        ...(metaExtra ?? {}),
+      },
     };
   }
 

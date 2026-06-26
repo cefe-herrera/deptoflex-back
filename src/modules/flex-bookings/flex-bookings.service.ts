@@ -62,6 +62,7 @@ export class FlexBookingsService {
 
     const quote = await this.flexPricing.quote(dto.propertyFlexId, dto.totalMonths, dto.pricingPlanId);
     const monthlyAmount = quote.monthlyRent;
+    const monthlyAmountDecimal = new Decimal(monthlyAmount);
     const totalAmount = new Decimal(quote.totalAmount);
     const depositAmount = quote.depositAmount;
     const reservationPaymentAmount = quote.reservationPaymentAmount;
@@ -155,8 +156,8 @@ export class FlexBookingsService {
           bookingId: booking.id,
           professionalProfileId,
           rate,
-          baseAmount: totalAmount,
-          commissionAmount: totalAmount.mul(rate).div(100),
+          baseAmount: monthlyAmountDecimal,
+          commissionAmount: this.commissionRates.flexCommissionAmount(monthlyAmountDecimal, rate),
           currency,
           status: CommissionStatus.PENDING,
         },
@@ -358,13 +359,13 @@ export class FlexBookingsService {
           registry.professionalProfileId,
           tx,
         );
-        const amount = new Decimal(totalAmount);
+        const commissionBase = new Decimal(monthlyAmount);
         await tx.commission.updateMany({
           where: { bookingId: registry.id, status: CommissionStatus.PENDING },
           data: {
             rate,
-            baseAmount: amount,
-            commissionAmount: amount.mul(rate).div(100),
+            baseAmount: commissionBase,
+            commissionAmount: this.commissionRates.flexCommissionAmount(commissionBase, rate),
           },
         });
       }

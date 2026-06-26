@@ -10,7 +10,7 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
+import { ThrottlerGuard, Throttle, SkipThrottle } from '@nestjs/throttler';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
@@ -31,6 +31,7 @@ import { Public } from '../../common/decorators/public.decorator';
 @ApiTags('Auth')
 @ApiBearerAuth('access-token')
 @UseGuards(ThrottlerGuard)
+@SkipThrottle({ global: true, booking: true })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -39,24 +40,24 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 20, ttl: 60_000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Registrar un nuevo usuario',
-    description: 'Crea una cuenta con email y contraseña y envía un mail de verificación. Limitado a 5 intentos por minuto por IP.',
+    description: 'Crea una cuenta con email y contraseña y envía un mail de verificación. Limitado a 20 intentos por minuto por IP.',
   })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 20, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Login con email y contraseña',
-    description: 'Autentica al usuario y devuelve `accessToken` + `refreshToken`. Registra user-agent e IP para auditoría. Limitado a 5 intentos por minuto.',
+    description: 'Autentica al usuario y devuelve `accessToken` + `refreshToken`. Registra user-agent e IP para auditoría. Limitado a 20 intentos por minuto.',
   })
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, {
@@ -66,7 +67,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 15, ttl: 60_000 } })
   @Post('google')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -81,7 +82,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ auth: { limit: 5, ttl: 60000 } })
+  @Throttle({ auth: { limit: 15, ttl: 60_000 } })
   @Post('apple')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -96,6 +97,7 @@ export class AuthController {
   }
 
   @Public()
+  @SkipThrottle({ auth: true })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -110,6 +112,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @SkipThrottle({ auth: true })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Cerrar sesión',
@@ -120,6 +123,7 @@ export class AuthController {
   }
 
   @Public()
+  @SkipThrottle({ auth: true })
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -131,6 +135,7 @@ export class AuthController {
   }
 
   @Public()
+  @SkipThrottle({ auth: true })
   @Get('verify-email')
   @ApiOperation({
     summary: 'Verificar email (GET con redirect)',
@@ -148,7 +153,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ auth: { limit: 3, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -160,7 +165,7 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ auth: { limit: 3, ttl: 60000 } })
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -172,6 +177,7 @@ export class AuthController {
   }
 
   @Public()
+  @SkipThrottle({ auth: true })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -183,6 +189,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @SkipThrottle({ auth: true })
   @ApiOperation({
     summary: 'Datos del usuario autenticado',
     description: 'Devuelve el perfil del usuario actual incluyendo roles y datos básicos. Requiere `accessToken` válido.',

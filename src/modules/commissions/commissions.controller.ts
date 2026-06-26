@@ -42,20 +42,20 @@ export class CommissionsController {
     @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
     @ApiOperation({
         summary: 'Vista previa de comisión flex',
-        description: 'Calcula la comisión estimada para el embajador autenticado según las tasas vigentes y el monto total de la reserva.',
+        description: 'Calcula la comisión estimada para el embajador autenticado según las tasas vigentes y el alquiler del primer mes.',
     })
     @ApiParam({ name: 'propertyFlexId', type: String, format: 'uuid' })
-    @ApiQuery({ name: 'totalAmount', required: true, type: Number })
+    @ApiQuery({ name: 'monthlyAmount', required: true, type: Number })
     previewFlex(
         @Param('propertyFlexId', ParseUUIDPipe) propertyFlexId: string,
-        @Query('totalAmount') totalAmountRaw: string,
+        @Query('monthlyAmount') monthlyAmountRaw: string,
         @CurrentUser() user: CurrentUserPayload,
     ) {
-        const totalAmount = Number(totalAmountRaw);
-        if (!totalAmountRaw || Number.isNaN(totalAmount) || totalAmount < 0) {
-            throw new BadRequestException('totalAmount must be a non-negative number');
+        const monthlyAmount = Number(monthlyAmountRaw);
+        if (!monthlyAmountRaw || Number.isNaN(monthlyAmount) || monthlyAmount < 0) {
+            throw new BadRequestException('monthlyAmount must be a non-negative number');
         }
-        return this.commissionRatesService.previewFlexCommissionForUser(propertyFlexId, totalAmount, user);
+        return this.commissionRatesService.previewFlexCommissionForUser(propertyFlexId, monthlyAmount, user);
     }
 
     @Post('commission-rates/recalculate')

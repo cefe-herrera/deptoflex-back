@@ -67,9 +67,13 @@ export class CommissionRatesService {
     return { rate: new Decimal(0), source: 'ZERO' };
   }
 
+  flexCommissionAmount(monthlyAmount: Decimal, rate: Decimal): Decimal {
+    return monthlyAmount.mul(rate).div(100);
+  }
+
   async previewFlexCommissionForUser(
     propertyFlexId: string,
-    totalAmount: number,
+    monthlyAmount: number,
     user: CurrentUserPayload,
   ) {
     const property = await this.prisma.propertyFlex.findFirst({
@@ -88,14 +92,14 @@ export class CommissionRatesService {
 
     const { rate, source } = await this.resolveFlexRateWithSource(propertyFlexId, profile.id);
     const rateNum = Number(rate);
-    const commissionAmount = (totalAmount * rateNum) / 100;
+    const commissionAmount = this.flexCommissionAmount(new Decimal(monthlyAmount), rate);
 
     return {
       rate: rateNum,
       rateSource: source,
       rateSourceLabel: RATE_SOURCE_LABELS[source],
-      baseAmount: totalAmount,
-      commissionAmount,
+      baseAmount: monthlyAmount,
+      commissionAmount: Number(commissionAmount),
       currency: property.currency,
     };
   }
@@ -438,7 +442,7 @@ export class CommissionRatesService {
         id: true,
         propertyFlexId: true,
         professionalProfileId: true,
-        totalAmount: true,
+        flexBooking: { select: { monthlyAmount: true } },
       },
     });
   }
@@ -468,18 +472,19 @@ export class CommissionRatesService {
     id: string;
     propertyFlexId: string | null;
     professionalProfileId: string | null;
-    totalAmount: Decimal;
+    flexBooking: { monthlyAmount: Decimal } | null;
   }) {
-    if (!booking.propertyFlexId) return;
+    if (!booking.propertyFlexId || !booking.flexBooking) return;
 
     const rate = await this.resolveFlexRate(booking.propertyFlexId, booking.professionalProfileId);
-    const commissionAmount = booking.totalAmount.mul(rate).div(100);
+    const monthlyAmount = booking.flexBooking.monthlyAmount;
+    const commissionAmount = this.flexCommissionAmount(monthlyAmount, rate);
 
     await this.prisma.commission.updateMany({
       where: { bookingId: booking.id, status: CommissionStatus.PENDING },
       data: {
         rate,
-        baseAmount: booking.totalAmount,
+        baseAmount: monthlyAmount,
         commissionAmount,
       },
     });

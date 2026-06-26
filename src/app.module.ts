@@ -47,7 +47,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     }),
     ThrottlerModule.forRoot([
       { name: 'global', ttl: 60000, limit: 100 },
-      { name: 'auth', ttl: 60000, limit: 5 },
+      { name: 'auth', ttl: 60000, limit: 20 },
+      { name: 'booking', ttl: 60000, limit: 60 },
     ]),
     ScheduleModule.forRoot(),
     PrismaModule,
