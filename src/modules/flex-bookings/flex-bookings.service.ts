@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, No
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
+import { CommissionWorkflowService } from '../commissions/commission-workflow.service';
 import { FlexPricingService } from '../property-flex/flex-pricing.service';
 import { BookingsService } from '../bookings/bookings.service';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -27,6 +28,7 @@ export class FlexBookingsService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private commissionRates: CommissionRatesService,
+    private commissionWorkflow: CommissionWorkflowService,
     private flexPricing: FlexPricingService,
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
@@ -224,6 +226,10 @@ export class FlexBookingsService {
         });
         confirmedBookingId = registry.id;
       }
+
+      if (confirmedBookingId) {
+        await this.commissionWorkflow.approveOnFlexBookingConfirmed(confirmedBookingId, tx);
+      }
     });
 
     if (confirmedBookingId) {
@@ -385,6 +391,7 @@ export class FlexBookingsService {
           });
           if (dto.status === 'CONFIRMED') {
             confirmedBookingId = registry.id;
+            await this.commissionWorkflow.approveOnFlexBookingConfirmed(registry.id, tx);
           }
         }
       }

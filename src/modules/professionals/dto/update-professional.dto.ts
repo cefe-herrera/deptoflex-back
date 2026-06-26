@@ -25,6 +25,26 @@ export class UpdateProfessionalDto {
   @IsString()
   @MaxLength(100)
   licenseNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  bankCbuCvu?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  bankAlias?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  bankAccountHolder?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  bankName?: string;
 }
 
 export class AdminUpdateProfessionalDto extends UpdateProfessionalDto {

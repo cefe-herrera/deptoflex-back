@@ -106,12 +106,22 @@ export class ActivityService {
     const temporalesCount = bookings.filter((b) => b.source !== BookingSource.FLEX).length;
 
     const total = commissions.reduce((sum, c) => sum + Number(c.commissionAmount), 0);
-    const pending = commissions.filter((c) =>
-      c.status === CommissionStatus.PENDING || c.status === CommissionStatus.APPROVED,
+    const paidTotal = commissions
+      .filter((c) => c.status === CommissionStatus.PAID)
+      .reduce((sum, c) => sum + Number(c.commissionAmount), 0);
+    const pendingValidation = commissions
+      .filter((c) => c.status === CommissionStatus.PENDING_VALIDATION)
+      .reduce((sum, c) => sum + Number(c.commissionAmount), 0);
+    const approvedToCollect = commissions.filter(
+      (c) => c.status === CommissionStatus.APPROVED && !c.settlementId,
     );
-    const toCollect = pending.reduce((sum, c) => sum + Number(c.commissionAmount), 0);
+    const toCollect = approvedToCollect.reduce((sum, c) => sum + Number(c.commissionAmount), 0);
+    const inSettlement = commissions.filter(
+      (c) => c.status === CommissionStatus.APPROVED && c.settlementId,
+    );
+    const inSettlementTotal = inSettlement.reduce((sum, c) => sum + Number(c.commissionAmount), 0);
 
-    const pendingDates = pending
+    const pendingDates = approvedToCollect
       .map((c) => c.createdAt)
       .sort((a, b) => a.getTime() - b.getTime());
 
@@ -138,6 +148,9 @@ export class ActivityService {
 
     return {
       total,
+      paidTotal,
+      pendingValidation,
+      inSettlementTotal,
       date: this.fmtShort(lastUpdated),
       flexCount,
       temporalesCount,
@@ -361,6 +374,9 @@ export class ActivityService {
   private emptyEarnings() {
     return {
       total: 0,
+      paidTotal: 0,
+      pendingValidation: 0,
+      inSettlementTotal: 0,
       date: this.fmtShort(new Date()),
       flexCount: 0,
       temporalesCount: 0,

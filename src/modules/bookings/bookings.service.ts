@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, ConflictExc
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
+import { CommissionWorkflowService } from '../commissions/commission-workflow.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
 import { BookingSource, BookingStatus, CommissionStatus } from '@prisma/client';
@@ -15,6 +16,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private commissionRates: CommissionRatesService,
+    private commissionWorkflow: CommissionWorkflowService,
   ) {}
 
   async create(dto: CreateBookingDto, changedById: string) {
@@ -152,6 +154,9 @@ export class BookingsService {
             status: CommissionStatus.PENDING,
           },
         });
+        await this.commissionWorkflow.approveTrustedTemporalOnConfirm(id, tx);
+      } else if (existingCommission?.status === CommissionStatus.PENDING) {
+        await this.commissionWorkflow.approveTrustedTemporalOnConfirm(id, tx);
       }
 
       return updated;

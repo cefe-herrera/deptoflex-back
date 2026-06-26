@@ -4,7 +4,11 @@ import {
 } from '@nestjs/common';
 import { CommissionsService } from './commissions.service';
 import { CommissionRatesService } from './commission-rates.service';
+import { CommissionWorkflowService } from './commission-workflow.service';
+import { CommissionSettlementsService } from './commission-settlements.service';
 import { SetCommissionRateDto } from './dto/set-commission-rate.dto';
+import { CreateSettlementDto } from './dto/create-settlement.dto';
+import { MarkSettlementPaidDto } from './dto/mark-settlement-paid.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
@@ -16,6 +20,8 @@ export class CommissionsController {
     constructor(
         private readonly commissionsService: CommissionsService,
         private readonly commissionRatesService: CommissionRatesService,
+        private readonly commissionWorkflowService: CommissionWorkflowService,
+        private readonly commissionSettlementsService: CommissionSettlementsService,
     ) { }
 
     @Get('commissions')
@@ -168,5 +174,110 @@ export class CommissionsController {
         @Param('profileId', ParseUUIDPipe) profileId: string,
     ) {
         return this.commissionRatesService.deleteAmbassadorPropertyOverride(propertyId, profileId);
+    }
+
+    @Get('commissions/pending-validation')
+    @Roles('ADMIN', 'OPERATOR')
+    @ApiOperation({
+        summary: 'Cola de comisiones pendientes de validación',
+        description: 'Lista comisiones temporales de tracking Cloudbeds que requieren aprobación manual antes de liquidar.',
+    })
+    listPendingValidation() {
+        return this.commissionSettlementsService.listPendingValidation();
+    }
+
+    @Patch('commissions/:id/approve')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Aprobar comisión',
+        description: 'Aprueba una comisión PENDING o PENDING_VALIDATION para incluirla en liquidaciones.',
+    })
+    @ApiParam({ name: 'id', type: String, format: 'uuid' })
+    approveCommission(@Param('id', ParseUUIDPipe) id: string) {
+        return this.commissionWorkflowService.approveCommission(id);
+    }
+
+    @Get('commission-settlements/preview')
+    @Roles('ADMIN', 'OPERATOR')
+    @ApiOperation({
+        summary: 'Vista previa de liquidación',
+        description: 'Agrupa comisiones APPROVED sin pagar por embajador, listas para liquidar.',
+    })
+    settlementPreview() {
+        return this.commissionSettlementsService.getSettlementPreview();
+    }
+
+    @Post('commission-settlements')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Crear liquidaciones',
+        description: 'Genera una liquidación DRAFT por embajador con comisiones elegibles. Opcionalmente filtra por embajadores.',
+    })
+    createSettlements(@Body() dto: CreateSettlementDto) {
+        return this.commissionSettlementsService.createSettlements(dto);
+    }
+
+    @Get('commission-settlements')
+    @Roles('ADMIN', 'OPERATOR')
+    @ApiOperation({ summary: 'Listar liquidaciones (admin)' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    @ApiQuery({ name: 'status', required: false, enum: ['DRAFT', 'PAID', 'CANCELLED'] })
+    listSettlements(
+        @Query('page') page = 1,
+        @Query('limit') limit = 20,
+        @Query('status') status?: 'DRAFT' | 'PAID' | 'CANCELLED',
+    ) {
+        return this.commissionSettlementsService.findAll(+page, +limit, status);
+    }
+
+    @Get('commission-settlements/mine')
+    @Roles('AMBASSADOR', 'PROFESSIONAL')
+    @ApiOperation({ summary: 'Mis liquidaciones (embajador)' })
+    @ApiQuery({ name: 'page', required: false, type: Number })
+    @ApiQuery({ name: 'limit', required: false, type: Number })
+    mySettlements(
+        @CurrentUser() user: CurrentUserPayload,
+        @Query('page') page = 1,
+        @Query('limit') limit = 20,
+    ) {
+        return this.commissionSettlementsService.findMine(user.id, +page, +limit);
+    }
+
+    @Get('commission-settlements/:id')
+    @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR', 'PROFESSIONAL')
+    @ApiOperation({ summary: 'Detalle de liquidación' })
+    @ApiParam({ name: 'id', type: String, format: 'uuid' })
+    getSettlement(
+        @Param('id', ParseUUIDPipe) id: string,
+        @CurrentUser() user: CurrentUserPayload,
+    ) {
+        return this.commissionSettlementsService.findOne(id, user);
+    }
+
+    @Patch('commission-settlements/:id/mark-paid')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Marcar liquidación como pagada',
+        description: 'Registra el pago contable y marca las comisiones incluidas como PAID.',
+    })
+    @ApiParam({ name: 'id', type: String, format: 'uuid' })
+    markSettlementPaid(
+        @Param('id', ParseUUIDPipe) id: string,
+        @Body() dto: MarkSettlementPaidDto,
+        @CurrentUser() user: CurrentUserPayload,
+    ) {
+        return this.commissionSettlementsService.markPaid(id, dto, user.id);
+    }
+
+    @Patch('commission-settlements/:id/cancel')
+    @Roles('ADMIN')
+    @ApiOperation({
+        summary: 'Cancelar liquidación en borrador',
+        description: 'Libera las comisiones asociadas para una nueva liquidación.',
+    })
+    @ApiParam({ name: 'id', type: String, format: 'uuid' })
+    cancelSettlement(@Param('id', ParseUUIDPipe) id: string) {
+        return this.commissionSettlementsService.cancelDraft(id);
     }
 }
