@@ -35,7 +35,7 @@ export class AmbassadorsController {
   @ApiOperation({
     summary: 'Crear sesión de reserva de embajador (autenticado)',
     description:
-      'Persiste una sesión liviana (session_id + cloudbedsUrl) asociada al embajador autenticado, antes de redirigir/abrir el motor público de Cloudbeds. NO usa la API oficial de Cloudbeds.',
+      'Genera sessionId + trackingToken, persiste la sesión asociada al embajador autenticado y devuelve cloudbedsUrl con mode=ambassador|guest. NO usa la API oficial de Cloudbeds.',
   })
   createSession(
     @CurrentUser() user: CurrentUserPayload,

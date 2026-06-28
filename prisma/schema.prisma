@@ -146,6 +146,11 @@ enum AmbassadorSessionStatus {
   CONFIRMED
 }
 
+enum AmbassadorSessionMode {
+  AMBASSADOR
+  GUEST
+}
+
 enum PayoutStatus {
   PENDING
   PROCESSING
@@ -1302,11 +1307,18 @@ model ReservationIntent {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model AmbassadorBookingSession {
-  // id = session_id (UUID) generado en el frontend antes de abrir Cloudbeds.
+  // id = session_id (UUID) generado en el backend antes de abrir Cloudbeds.
   id                     String                  @id @db.Uuid
   professionalProfileId  String                  @map("professional_profile_id") @db.Uuid
   status                 AmbassadorSessionStatus @default(STARTED)
+  mode                   AmbassadorSessionMode   @default(AMBASSADOR)
+  // Hash SHA-256 del tracking_token (solo se entrega en claro al crear la sesión).
+  trackingTokenHash      String?                 @map("tracking_token_hash") @db.VarChar(64)
   cloudbedsUrl           String                  @map("cloudbeds_url") @db.Text
+  propertyId             String?                 @map("property_id") @db.Uuid
+  bookingContext         Json?                   @map("booking_context")
+  guestReturnUrl         String?                 @map("guest_return_url") @db.Text
+  expiresAt              DateTime?               @map("expires_at") @db.Timestamptz
   // Booking local creado al recibir el aviso de reserva (si se pudo asociar).
   bookingId              String?                 @unique @map("booking_id") @db.Uuid
   // booking_id que reporta Cloudbeds (sirve para dedupe junto con el sessionId).
@@ -1317,6 +1329,7 @@ model AmbassadorBookingSession {
   professionalProfile    ProfessionalProfile     @relation(fields: [professionalProfileId], references: [id])
 
   @@index([professionalProfileId])
+  @@index([trackingTokenHash])
   @@map("ambassador_booking_sessions")
 }
 

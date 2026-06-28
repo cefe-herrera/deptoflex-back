@@ -47,6 +47,24 @@ export class CloudbedsReservationDto {
   sessionId: string;
 
   @ApiPropertyOptional({
+    description:
+      'Token de tracking generado al crear la sesión. Requerido para sesiones nuevas con hash en DB.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  trackingToken?: string;
+
+  @ApiPropertyOptional({
+    enum: ['ambassador', 'guest'],
+    description: 'Modo de navegación en Cloudbeds.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  mode?: string;
+
+  @ApiPropertyOptional({
     description: 'Id de reserva de Cloudbeds (booking_id). Si viene, se usa para dedupe e idempotencia.',
   })
   @IsOptional()

@@ -3,37 +3,27 @@
 Script para pegar en el campo de **JavaScript personalizado** del Booking Engine de Cloudbeds.
 
 > Esta integración **NO usa la API oficial de Cloudbeds**. Tras confirmar la reserva,
-> el script avisa al backend y **redirige al usuario a DeptoFlex** (WeFlex).
+> el script avisa al backend y redirige según `mode`:
+> - `ambassador` → `return_url` (panel DeptoFlex)
+> - `guest` → opcionalmente `guest_return_url`; si no existe, queda en Cloudbeds
 
 ## Flujo
 
-1. DeptoFlex redirige al motor de Cloudbeds con parámetros en la URL:
-   - `ambassador_id`, `session_id`, `return_url`, fechas, etc.
-2. El script lee la metadata embebida en la página (`[data-metadata]`) y vigila los inputs del checkout.
-3. El huésped completa la reserva en Cloudbeds.
-4. El script escucha `reservation-created`, mezcla evento + formulario + metadata y hace `fetch` al backend.
-5. Redirige a `return_url` (pantalla de confirmación en DeptoFlex) con `bookingId`.
+1. DeptoFlex crea una sesión segura (`session_id` + `tracking_token`) y abre Cloudbeds con:
+   - `ambassador_id`, `session_id`, `tracking_token`, `mode`, fechas, etc.
+   - `return_url` solo en `mode=ambassador`
+   - `guest_return_url` en `mode=guest` (por defecto: `{FRONTEND_URL}/p/reserva/gracias`)
+2. El script lee metadata embebida y vigila inputs del checkout.
+3. Al confirmar, escucha `reservation-created` y envía payload al backend.
+4. Redirección condicional según `mode`.
 
-**No se usa iframe ni postMessage** (Cloudbeds deprecó el embed por iframe).
-
-## Qué trae el HTML vs el SPA
-
-El HTML que ves en *Ver código fuente* es un **shell**: carga `main.js` y monta React en `#root`.
-Los inputs del huésped **no están en el HTML inicial**; aparecen cuando el SPA renderiza el checkout.
-Por eso el script:
-
-- Parsea `[data-metadata]` (nombre del hotel, dirección, habitaciones con `rid=498379`, etc.).
-- Usa `MutationObserver` + eventos `input`/`change` para capturar nombre, email y teléfono del DOM.
+**Reservas directas sin `session_id`:** el script no hace tracking (compatibilidad).
 
 ## Configuración
 
-Reemplazá en el script:
-
-| Variable | Ejemplo dev | Ejemplo prod |
-|----------|-------------|--------------|
-| `BACKEND_ENDPOINT` | `http://localhost:3000/api/v1/ambassadors/cloudbeds-reservation` | `https://api.deptoflex.com/api/v1/ambassadors/cloudbeds-reservation` |
-
-`return_url` viene en la query de Cloudbeds (la arma DeptoFlex al redirigir). No hace falta hardcodear el front.
+| Variable | Ejemplo prod |
+|----------|--------------|
+| `BACKEND_ENDPOINT` | `https://deptoflex-back.vercel.app/api/v1/ambassadors/cloudbeds-reservation` |
 
 ## Script
 
@@ -42,7 +32,7 @@ Reemplazá en el script:
 (function () {
   console.log('[Ambassador Tracking] Script cargado dentro de Cloudbeds');
 
-  var BACKEND_ENDPOINT = 'http://localhost:3000/api/v1/ambassadors/cloudbeds-reservation';
+  var BACKEND_ENDPOINT = 'https://deptoflex-back.vercel.app/api/v1/ambassadors/cloudbeds-reservation';
 
   function getQueryParam(name) {
     return new URLSearchParams(window.location.search).get(name);
@@ -50,16 +40,20 @@ Reemplazá en el script:
 
   var ambassadorId = getQueryParam('ambassador_id');
   var sessionId = getQueryParam('session_id');
+  var trackingToken = getQueryParam('tracking_token');
+  var mode = (getQueryParam('mode') || 'ambassador').toLowerCase();
   var returnUrl = getQueryParam('return_url');
+  var guestReturnUrl = getQueryParam('guest_return_url');
   var guestStorageKey = 'ambassador_guest_form_' + (sessionId || 'unknown');
   var pageMetadata = null;
 
-  console.log('[Ambassador Tracking] ambassador_id:', ambassadorId);
   console.log('[Ambassador Tracking] session_id:', sessionId);
+  console.log('[Ambassador Tracking] mode:', mode);
   console.log('[Ambassador Tracking] return_url:', returnUrl);
+  console.log('[Ambassador Tracking] guest_return_url:', guestReturnUrl);
 
-  if (!ambassadorId || !sessionId) {
-    console.warn('[Ambassador Tracking] Sin ambassador_id/session_id: reserva directa, sin tracking.');
+  if (!sessionId) {
+    console.warn('[Ambassador Tracking] Sin session_id: reserva directa, sin tracking.');
     return;
   }
 
@@ -188,7 +182,7 @@ Reemplazá en el script:
   console.log('[Ambassador Tracking] pageMetadata:', pageMetadata);
   startGuestFormWatcher();
 
-  function redirectToApp(bookingId) {
+  function redirectAmbassador(bookingId) {
     var target = returnUrl;
     if (!target) {
       console.warn('[Ambassador Tracking] Falta return_url, no se redirige a DeptoFlex');
@@ -198,8 +192,30 @@ Reemplazá en el script:
     if (bookingId) {
       target = target + sep + 'bookingId=' + encodeURIComponent(bookingId);
     }
-    console.log('[Ambassador Tracking] Redirigiendo a DeptoFlex:', target);
+    console.log('[Ambassador Tracking] Redirigiendo a DeptoFlex (ambassador):', target);
     window.location.href = target;
+  }
+
+  function redirectGuest(bookingId) {
+    if (!guestReturnUrl) {
+      console.log('[Ambassador Tracking] mode=guest sin guest_return_url: permanece en Cloudbeds');
+      return;
+    }
+    var target = guestReturnUrl;
+    var sep = target.indexOf('?') >= 0 ? '&' : '?';
+    if (bookingId) {
+      target = target + sep + 'bookingId=' + encodeURIComponent(bookingId);
+    }
+    console.log('[Ambassador Tracking] Redirigiendo a página pública (guest):', target);
+    window.location.href = target;
+  }
+
+  function handlePostReservation(bookingId) {
+    if (mode === 'guest') {
+      redirectGuest(bookingId);
+    } else {
+      redirectAmbassador(bookingId);
+    }
   }
 
   window.addEventListener('on-booking-engine-ready', function (e) {
@@ -213,9 +229,6 @@ Reemplazá en el script:
 
     eventSystem.addEventListener('reservation-created', function (reservation) {
       console.log('[Ambassador Tracking] reservation-created detectado', reservation);
-      console.log('[Ambassador Tracking] checkin_date:', reservation && reservation.checkin_date);
-      console.log('[Ambassador Tracking] booking_total:', reservation && reservation.booking_total);
-      console.log('[Ambassador Tracking] widget_property:', reservation && reservation.widget_property);
 
       var bookingId = reservation && reservation.booking_id;
       if (!bookingId) {
@@ -225,20 +238,21 @@ Reemplazá en el script:
       var dedupeKey = 'ambassador_reservation_sent_' + (bookingId || sessionId);
       if (sessionStorage.getItem(dedupeKey)) {
         console.warn('[Ambassador Tracking] Duplicado ignorado:', dedupeKey);
-        redirectToApp(bookingId);
+        handlePostReservation(bookingId);
         return;
       }
       sessionStorage.setItem(dedupeKey, 'true');
 
       persistGuestForm();
       var guestForm = loadGuestForm() || captureGuestFormFromDom();
-      console.log('[Ambassador Tracking] guestForm enviado:', guestForm);
 
       var payload = {
         source: 'cloudbeds-booking-engine',
         event: 'reservation-created',
+        mode: mode,
         ambassadorId: ambassadorId,
         sessionId: sessionId,
+        trackingToken: trackingToken,
         bookingId: bookingId,
         reservation: reservation,
         guestForm: guestForm,
@@ -264,7 +278,7 @@ Reemplazá en el script:
           console.error('[Ambassador Tracking] Error enviando al backend:', error);
         })
         .finally(function () {
-          redirectToApp(bookingId);
+          handlePostReservation(bookingId);
         });
     });
 
@@ -274,20 +288,25 @@ Reemplazá en el script:
 </script>
 ```
 
+## Parámetros de URL
+
+| Parámetro | Requerido | Descripción |
+|-----------|-----------|-------------|
+| `session_id` | Sí (tracking) | UUID de sesión creada en DeptoFlex |
+| `tracking_token` | Sí (sesiones nuevas) | Token validado en backend |
+| `mode` | Sí | `ambassador` o `guest` |
+| `ambassador_id` | Informativo | UUID del embajador (no confiable solo) |
+| `return_url` | mode=ambassador | Retorno al panel embajador |
+| `guest_return_url` | mode=guest | Página pública de agradecimiento (default: `/p/reserva/gracias`) |
+
 ## Verificación
 
-En la consola de Cloudbeds, al confirmar una reserva:
+1. `mode=ambassador`: confirma reserva → backend 200 → redirige a `/reservar/confirmacion`
+2. `mode=guest`: confirma reserva → backend 200 → NO redirige al panel embajador
+3. Re-disparo del evento → dedupe en sessionStorage + backend por `bookingId`
 
-1. `pageMetadata:` con hotel **Usina Studio by FMA-Coliving** y dirección Salta
-2. `guestForm guardado` al completar el checkout (nombre, email, teléfono)
-3. `reservation-created detectado`
-4. `Backend status: 200`
-5. `Redirigiendo a DeptoFlex: ...`
+## Seguridad
 
-En DeptoFlex deberías ver cliente real, fechas, monto y propiedad (si `cloudbedsWidgetPropertyId` / `cloudbedsRoomTypeId` están mapeados en admin).
-
-## Notas
-
-- Cloudbeds recomienda no depender del DOM para pagos custom; acá lo usamos solo para **datos del huésped** que el evento oficial no trae.
-- Si tras un deploy de Cloudbeds deja de capturar el formulario, inspeccioná los inputs en checkout y ajustá los selectores.
-- `rid=498379` en la metadata corresponde al `cloudbedsRoomTypeId` de la unidad en DeptoFlex.
+- El backend valida `session_id` + `tracking_token` (hash SHA-256 en DB).
+- El `ambassador_id` real se toma de la sesión, no del payload.
+- Sesiones expiran a los 7 días.

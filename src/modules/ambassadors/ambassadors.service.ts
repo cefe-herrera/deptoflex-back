@@ -1,5 +1,7 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
+  AmbassadorSessionMode,
   AmbassadorSessionStatus,
   BookingSource,
   BookingStatus,
@@ -7,9 +9,13 @@ import {
   Prisma,
 } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
-import { CreateReservationSessionDto } from './dto/create-reservation-session.dto';
+import {
+  CreateReservationSessionDto,
+  ReservationSessionModeDto,
+} from './dto/create-reservation-session.dto';
 import { CloudbedsReservationDto } from './dto/cloudbeds-reservation.dto';
 
 /**
@@ -26,15 +32,17 @@ import { CloudbedsReservationDto } from './dto/cloudbeds-reservation.dto';
 @Injectable()
 export class AmbassadorsService {
   private readonly logger = new Logger(AmbassadorsService.name);
+  private static readonly SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly commissionRates: CommissionRatesService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
-   * Crea la sesión liviana ANTES de abrir Cloudbeds. La invoca el embajador
-   * autenticado: validamos que el `professionalProfileId` pertenezca al usuario.
+   * Crea la sesión liviana ANTES de abrir Cloudbeds. El backend genera sessionId
+   * y trackingToken; el embajador autenticado queda asociado como dueño real.
    */
   async createSession(userId: string, dto: CreateReservationSessionDto) {
     const profile = await this.prisma.professionalProfile.findUnique({
@@ -47,29 +55,95 @@ export class AmbassadorsService {
       );
     }
 
-    const session = await this.prisma.ambassadorBookingSession.upsert({
-      where: { id: dto.sessionId },
-      create: {
-        id: dto.sessionId,
-        professionalProfileId: profile.id,
-        cloudbedsUrl: dto.cloudbedsUrl,
-        status: AmbassadorSessionStatus.STARTED,
-      },
-      update: {
-        // Reintento con el mismo session_id: refrescamos la URL pero no cambiamos dueño.
-        cloudbedsUrl: dto.cloudbedsUrl,
-      },
-    });
+    const mode = this.resolveSessionMode(dto.mode);
+    const sessionId = dto.sessionId ?? randomUUID();
+    const trackingToken = randomBytes(32).toString('hex');
+    const trackingTokenHash = this.hashTrackingToken(trackingToken);
+    const expiresAt = new Date(Date.now() + AmbassadorsService.SESSION_TTL_MS);
+
+    const guestReturnUrl =
+      mode === AmbassadorSessionMode.GUEST
+        ? dto.guestReturnUrl?.trim() || this.getDefaultGuestReturnUrl()
+        : undefined;
+
+    const bookingContext = this.buildBookingContext(dto);
+    let cloudbedsUrl: string;
+
+    const bookingSlug = await this.resolveBookingSlug(dto);
+
+    if (bookingSlug) {
+      cloudbedsUrl = this.buildCloudbedsUrl({
+        ambassadorId: profile.id,
+        sessionId,
+        trackingToken,
+        mode,
+        bookingSlug,
+        context: bookingContext,
+        guestReturnUrl,
+      });
+    } else if (dto.cloudbedsUrl?.trim()) {
+      // Legacy: URL construida en frontend; reforzamos con token y mode si faltan.
+      cloudbedsUrl = this.augmentLegacyCloudbedsUrl(dto.cloudbedsUrl.trim(), {
+        sessionId,
+        trackingToken,
+        mode,
+        ambassadorId: profile.id,
+        guestReturnUrl,
+      });
+    } else {
+      throw new ForbiddenException(
+        'Falta bookingSlug, propertyId con código Cloudbeds, o cloudbedsUrl para crear la sesión',
+      );
+    }
+
+    let session;
+    try {
+      session = await this.prisma.ambassadorBookingSession.upsert({
+        where: { id: sessionId },
+        create: {
+          id: sessionId,
+          professionalProfileId: profile.id,
+          mode,
+          trackingTokenHash,
+          cloudbedsUrl,
+          propertyId: dto.propertyId ?? null,
+          bookingContext: bookingContext as Prisma.InputJsonValue,
+          guestReturnUrl: guestReturnUrl ?? null,
+          expiresAt,
+          status: AmbassadorSessionStatus.STARTED,
+        },
+        update: {
+          mode,
+          trackingTokenHash,
+          cloudbedsUrl,
+          propertyId: dto.propertyId ?? null,
+          bookingContext: bookingContext as Prisma.InputJsonValue,
+          guestReturnUrl: guestReturnUrl ?? null,
+          expiresAt,
+          status: AmbassadorSessionStatus.STARTED,
+        },
+      });
+    } catch (err) {
+      this.logger.error(
+        `[Ambassador] error persistiendo sesión session_id=${sessionId}`,
+        err instanceof Error ? err.stack : err,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo crear la sesión de reserva. Verificá que la migración ambassador_session_mode_token esté aplicada en la base de datos.',
+      );
+    }
 
     this.logger.log(
-      `[Ambassador] sesión creada session_id=${session.id} ambassador=${profile.id} status=${session.status}`,
+      `[Ambassador] sesión creada session_id=${session.id} ambassador=${profile.id} mode=${mode} status=${session.status}`,
     );
 
     return {
       sessionId: session.id,
+      trackingToken,
       ambassadorId: session.professionalProfileId,
       status: session.status,
       cloudbedsUrl: session.cloudbedsUrl,
+      mode: mode === AmbassadorSessionMode.GUEST ? 'guest' : 'ambassador',
       createdAt: session.createdAt,
     };
   }
@@ -96,6 +170,29 @@ export class AmbassadorsService {
         `[Ambassador] sesión no encontrada session_id=${dto.sessionId} (se ignora, posible spoof o sesión expirada)`,
       );
       return { ok: true, status: 'session_not_found' as const };
+    }
+
+    if (session.expiresAt && session.expiresAt < new Date()) {
+      this.logger.warn(
+        `[Ambassador] sesión expirada session_id=${dto.sessionId}`,
+      );
+      return { ok: true, status: 'session_expired' as const };
+    }
+
+    if (session.trackingTokenHash) {
+      if (!dto.trackingToken?.trim()) {
+        this.logger.warn(
+          `[Ambassador] falta tracking_token para session_id=${dto.sessionId}`,
+        );
+        return { ok: true, status: 'invalid_token' as const };
+      }
+      const tokenHash = this.hashTrackingToken(dto.trackingToken.trim());
+      if (tokenHash !== session.trackingTokenHash) {
+        this.logger.warn(
+          `[Ambassador] tracking_token inválido session_id=${dto.sessionId}`,
+        );
+        return { ok: true, status: 'invalid_token' as const };
+      }
     }
 
     // Verificación blanda: el ambassador_id del payload (de la URL) debería
@@ -141,7 +238,7 @@ export class AmbassadorsService {
     }
 
     // 4. Resolver Property y Unit local (widget_property → Property; room_type_id → Unit).
-    let propertyId: string | null = null;
+    let propertyId: string | null = session.propertyId ?? null;
     let unitId: string | null = null;
 
     if (parsed.widgetPropertyId) {
@@ -169,7 +266,7 @@ export class AmbassadorsService {
       unitId = unit?.id ?? null;
     }
 
-    const notes = this.buildBookingNotes(parsed, propertyId);
+    const notes = this.buildBookingNotes(parsed, propertyId, session.mode);
 
     // 5. Crear Booking PENDING + Commission PENDING_VALIDATION en una transacción.
     const booking = await this.prisma.$transaction(async (tx) => {
@@ -242,6 +339,156 @@ export class AmbassadorsService {
     );
 
     return { ok: true, status: 'created' as const, bookingId: booking.id };
+  }
+
+  private hashTrackingToken(raw: string): string {
+    return createHash('sha256').update(raw).digest('hex');
+  }
+
+  /** Resuelve el slug del motor Cloudbeds desde el DTO o la propiedad local. */
+  private async resolveBookingSlug(
+    dto: CreateReservationSessionDto,
+  ): Promise<string | null> {
+    const fromDto = dto.bookingSlug?.trim();
+    if (fromDto) return fromDto;
+
+    if (!dto.propertyId) return null;
+
+    const property = await this.prisma.property.findFirst({
+      where: { id: dto.propertyId, deletedAt: null },
+      select: { cloudbedsBookingSlug: true },
+    });
+    const fromProperty = property?.cloudbedsBookingSlug?.trim();
+    return fromProperty || null;
+  }
+
+  private resolveSessionMode(mode?: ReservationSessionModeDto): AmbassadorSessionMode {
+    return mode === ReservationSessionModeDto.GUEST
+      ? AmbassadorSessionMode.GUEST
+      : AmbassadorSessionMode.AMBASSADOR;
+  }
+
+  private buildBookingContext(dto: CreateReservationSessionDto): Record<string, unknown> {
+    return {
+      checkin: dto.checkin ?? null,
+      checkout: dto.checkout ?? null,
+      roomTypeId: dto.roomTypeId ?? null,
+      rateId: dto.rateId ?? null,
+      adults: dto.adults ?? null,
+      children: dto.children ?? null,
+      bookingSlug: dto.bookingSlug?.trim() ?? null,
+    };
+  }
+
+  private getFrontendBaseUrl(): string {
+    return (
+      this.config.get<string>('app.frontendUrl') ??
+      process.env.FRONTEND_URL ??
+      'http://localhost:3001'
+    ).replace(/\/$/, '');
+  }
+
+  /** Página pública de agradecimiento para huéspedes (mode=guest). */
+  private getDefaultGuestReturnUrl(): string {
+    return `${this.getFrontendBaseUrl()}/p/reserva/gracias`;
+  }
+
+  private getCloudbedsBookingBaseUrl(): string {
+    const raw =
+      this.config.get<string>('app.cloudbedsBookingBaseUrl') ??
+      process.env.CLOUDBEDS_BOOKING_BASE_URL ??
+      'https://hotels.cloudbeds.com/es/reservation/';
+    return raw.endsWith('/') ? raw : `${raw}/`;
+  }
+
+  private buildAmbassadorReturnUrl(ambassadorId: string, sessionId: string): string {
+    const params = new URLSearchParams({ sessionId });
+    return `${this.getFrontendBaseUrl()}/dashboard/ambassadors/${ambassadorId}/reservar/confirmacion?${params.toString()}`;
+  }
+
+  private buildCloudbedsUrl(opts: {
+    ambassadorId: string;
+    sessionId: string;
+    trackingToken: string;
+    mode: AmbassadorSessionMode;
+    bookingSlug: string;
+    context: Record<string, unknown>;
+    guestReturnUrl?: string;
+  }): string {
+    const base = this.getCloudbedsBookingBaseUrl();
+    const url = new URL(`${base}${opts.bookingSlug}`);
+    const params = new URLSearchParams(url.search);
+    const modeParam = opts.mode === AmbassadorSessionMode.GUEST ? 'guest' : 'ambassador';
+
+    params.set('currency', 'ars');
+    params.set('ambassador_id', opts.ambassadorId);
+    params.set('session_id', opts.sessionId);
+    params.set('tracking_token', opts.trackingToken);
+    params.set('mode', modeParam);
+    params.set('utm_source', 'ambassador');
+    params.set('utm_campaign', opts.ambassadorId);
+
+    if (opts.mode === AmbassadorSessionMode.AMBASSADOR) {
+      params.set('return_url', this.buildAmbassadorReturnUrl(opts.ambassadorId, opts.sessionId));
+    }
+
+    if (opts.mode === AmbassadorSessionMode.GUEST) {
+      params.set(
+        'guest_return_url',
+        opts.guestReturnUrl?.trim() || `${this.getFrontendBaseUrl()}/p/reserva/gracias`,
+      );
+    }
+
+    const checkin = opts.context.checkin;
+    const checkout = opts.context.checkout;
+    const roomTypeId = opts.context.roomTypeId;
+    const rateId = opts.context.rateId;
+    const adults = opts.context.adults;
+    const children = opts.context.children;
+
+    if (typeof checkin === 'string' && checkin) params.set('checkin', checkin);
+    if (typeof checkout === 'string' && checkout) params.set('checkout', checkout);
+    if (typeof roomTypeId === 'string' && roomTypeId) params.set('room_type_id', roomTypeId);
+    if (typeof rateId === 'string' && rateId) params.set('rate_id', rateId);
+    if (typeof adults === 'number' && adults > 0) params.set('adults', String(adults));
+    if (typeof children === 'number' && children > 0) params.set('children', String(children));
+
+    url.search = params.toString();
+    return url.toString();
+  }
+
+  private augmentLegacyCloudbedsUrl(
+    cloudbedsUrl: string,
+    opts: {
+      sessionId: string;
+      trackingToken: string;
+      mode: AmbassadorSessionMode;
+      ambassadorId: string;
+      guestReturnUrl?: string;
+    },
+  ): string {
+    try {
+      const url = new URL(cloudbedsUrl);
+      const params = url.searchParams;
+      const modeParam = opts.mode === AmbassadorSessionMode.GUEST ? 'guest' : 'ambassador';
+      params.set('session_id', opts.sessionId);
+      params.set('tracking_token', opts.trackingToken);
+      params.set('mode', modeParam);
+      params.set('ambassador_id', opts.ambassadorId);
+      if (opts.mode === AmbassadorSessionMode.AMBASSADOR && !params.get('return_url')) {
+        params.set('return_url', this.buildAmbassadorReturnUrl(opts.ambassadorId, opts.sessionId));
+      }
+      if (opts.mode === AmbassadorSessionMode.GUEST) {
+        params.set(
+          'guest_return_url',
+          opts.guestReturnUrl?.trim() || `${this.getFrontendBaseUrl()}/p/reserva/gracias`,
+        );
+      }
+      url.search = params.toString();
+      return url.toString();
+    } catch {
+      return cloudbedsUrl;
+    }
   }
 
   /** Tasa por defecto del embajador cuando no pudimos mapear la propiedad. */
@@ -361,9 +608,14 @@ export class AmbassadorsService {
   private buildBookingNotes(
     parsed: ReturnType<AmbassadorsService['parseReservation']>,
     propertyId: string | null,
+    mode?: AmbassadorSessionMode,
   ): string {
+    const modeLabel =
+      mode === AmbassadorSessionMode.GUEST
+        ? 'link de huésped'
+        : 'embajador directo';
     let notes =
-      'Reserva atribuida vía tracking de embajador (Cloudbeds, sin API oficial). Pendiente de validación.';
+      `Reserva atribuida vía tracking de embajador (Cloudbeds, modo ${modeLabel}, sin API oficial). Pendiente de validación.`;
     if (!propertyId) {
       if (parsed.hotelName) notes += ` Hotel: ${parsed.hotelName}.`;
       if (parsed.locationHint) notes += ` Ubicación reportada: ${parsed.locationHint}.`;
