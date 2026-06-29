@@ -17,7 +17,7 @@ export class EmailService {
 
     async sendVerificationEmail(email: string, token: string): Promise<boolean> {
         const appUrl = this.configService.get<string>('app.url');
-        const verifyLink = `${appUrl}/api/v1/auth/verify-email?token=${token}`;
+        const verifyLink = `https://deptoflex-back.vercel.app/api/v1/auth/verify-email?token=${token}`;
 
         return this.send({
             to: email,
