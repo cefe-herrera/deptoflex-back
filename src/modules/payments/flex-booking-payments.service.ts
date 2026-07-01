@@ -320,29 +320,25 @@ export class FlexBookingPaymentsService {
     body: unknown,
     headers?: { xSignature?: string; xRequestId?: string; dataId?: string },
   ) {
-    console.log('handleWebhook', query, body, headers);
     if (!this.mercadoPago.isConfigured()) {
       this.logger.warn('Mercado Pago webhook received but MP is not configured');
       return { ok: true };
     }
 
     const event = extractMercadoPagoWebhookEvent(query, body);
-    console.log('event', event);
     const dataId = headers?.dataId ?? event?.resourceId;
-    console.log('dataId', dataId);
+
     const webhookSecret = this.config.get<string>('mercadopago.webhookSecret') ?? '';
-    console.log('webhookSecret', webhookSecret);
     if (webhookSecret) {
-      console.log('validating signature');
-      //const valid = validateMercadoPagoWebhookSignature(
-      //  { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
-      //  dataId,
-      //  webhookSecret,
-      //);
-      //if (!valid) {
-      //  this.logger.warn('Invalid Mercado Pago webhook signature');
-      //  throw new UnauthorizedException('Invalid webhook signature');
-      //}
+      const valid = validateMercadoPagoWebhookSignature(
+        { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
+        dataId,
+        webhookSecret,
+      );
+      if (!valid) {
+        this.logger.warn('Invalid Mercado Pago webhook signature');
+        throw new UnauthorizedException('Invalid webhook signature');
+      }
     } else {
       this.logger.warn('MERCADOPAGO_WEBHOOK_SECRET not set — webhook signature not validated');
     }
@@ -353,12 +349,9 @@ export class FlexBookingPaymentsService {
     }
 
     try {
-      console.log('processing event', event);
       if (event.type === 'payment' || event.type.startsWith('payment.')) {
-        console.log('processing payment notification', event.resourceId);
         await this.processPaymentNotification(event.resourceId);
       } else if (event.type === 'merchant_order') {
-        console.log('processing merchant order notification', event.resourceId);
         await this.processMerchantOrderNotification(event.resourceId);
       } else {
         this.logger.debug(`Mercado Pago webhook ignored: type=${event.type}`);
@@ -374,26 +367,52 @@ export class FlexBookingPaymentsService {
   }
 
   async processMerchantOrderNotification(merchantOrderId: string) {
-    console.log('processMerchantOrderNotification', merchantOrderId);
-    const paymentIds = await this.mercadoPago.getMerchantOrderPaymentIds(merchantOrderId);
-    console.log('paymentIds', paymentIds);
-    for (const paymentId of paymentIds) {
-      await this.processPaymentNotification(paymentId);
+    const order = await this.mercadoPago.getMerchantOrderContext(merchantOrderId);
+
+    if (order.paymentIds.length > 0) {
+      for (const paymentId of order.paymentIds) {
+        await this.processPaymentNotification(paymentId);
+      }
+      return;
     }
+
+    // MP often sends merchant_order before payments are linked to the order.
+    this.logger.debug(
+      `Merchant order ${merchantOrderId} has no payments yet; syncing by external_reference`,
+    );
+
+    if (order.externalReference) {
+      await this.syncBookingPayments(order.externalReference);
+      return;
+    }
+
+    await this.delay(2000);
+    const retry = await this.mercadoPago.getMerchantOrderContext(merchantOrderId);
+
+    if (retry.paymentIds.length > 0) {
+      for (const paymentId of retry.paymentIds) {
+        await this.processPaymentNotification(paymentId);
+      }
+      return;
+    }
+
+    if (retry.externalReference) {
+      await this.syncBookingPayments(retry.externalReference);
+      return;
+    }
+
+    this.logger.warn(`Merchant order ${merchantOrderId} has no payments or external_reference`);
   }
 
   async processPaymentNotification(mpPaymentId: string) {
-    console.log('processPaymentNotification', mpPaymentId);
     const payment = await this.mercadoPago.getPayment(mpPaymentId);
-    console.log('payment', payment);
+
     if (payment.status === 'approved') {
-      console.log('payment is approved');
       await this.confirmApprovedPayment(payment);
       return;
     }
 
     if (payment.status === 'refunded' || payment.status === 'charged_back') {
-      console.log('payment is refunded or charged back');
       await this.handleRefundedPayment(payment);
       return;
     }
@@ -402,7 +421,6 @@ export class FlexBookingPaymentsService {
     if (!flexBookingId) return;
 
     const status = this.mapMpStatus(payment.status);
-    console.log('status', status);
     if (!status || status === FlexBookingPaymentStatus.APPROVED) return;
 
     await this.prisma.flexBookingPayment.updateMany({
@@ -423,8 +441,15 @@ export class FlexBookingPaymentsService {
     if (input.paymentId) paymentIds.add(input.paymentId);
 
     if (input.merchantOrderId) {
-      const orderPaymentIds = await this.mercadoPago.getMerchantOrderPaymentIds(input.merchantOrderId);
-      orderPaymentIds.forEach((id) => paymentIds.add(id));
+      const order = await this.mercadoPago.getMerchantOrderContext(input.merchantOrderId);
+      order.paymentIds.forEach((id) => paymentIds.add(id));
+      if (paymentIds.size === 0 && order.externalReference) {
+        const found = await this.mercadoPago.searchPaymentsByExternalReference(order.externalReference);
+        for (const payment of found) {
+          await this.processPaymentNotification(payment.id);
+        }
+        return;
+      }
     }
 
     if (paymentIds.size === 0) {
@@ -543,6 +568,10 @@ export class FlexBookingPaymentsService {
     this.logger.warn(
       `MP payment ${payment.id} refunded/charged back for flex booking ${flexBookingId} — manual review required`,
     );
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private mapMpStatus(status: string): FlexBookingPaymentStatus | null {

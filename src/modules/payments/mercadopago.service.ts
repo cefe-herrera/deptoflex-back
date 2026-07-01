@@ -131,12 +131,22 @@ export class MercadoPagoService {
     })).filter((p) => p.id);
   }
 
-  async getMerchantOrderPaymentIds(merchantOrderId: string): Promise<string[]> {
+  async getMerchantOrderContext(merchantOrderId: string): Promise<{
+    paymentIds: string[];
+    externalReference: string | null;
+  }> {
     const client = this.getClient();
     const merchantOrderClient = new MerchantOrder(client);
     const order = await merchantOrderClient.get({ merchantOrderId });
-    return (order.payments ?? [])
+
+    const paymentIds = (order.payments ?? [])
       .map((p) => (p.id != null ? String(p.id) : ''))
       .filter(Boolean);
+
+    const externalReference = order.external_reference != null
+      ? String(order.external_reference)
+      : null;
+
+    return { paymentIds, externalReference };
   }
 }

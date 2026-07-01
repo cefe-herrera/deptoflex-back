@@ -20,7 +20,7 @@ export class PaymentsWebhookController {
   constructor(private payments: FlexBookingPaymentsService) {}
 
   @Public()
-  //@Get('mercadopago')
+  @Get('mercadopago')
   @Post('mercadopago')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -30,17 +30,12 @@ export class PaymentsWebhookController {
     @Body() body: unknown,
     @Req() req: Request,
   ) {
-    console.log('handleMercadoPago', query, body, req.headers);
     const xSignature = req.headers['x-signature'];
-    console.log('xSignature', xSignature);
     const xRequestId = req.headers['x-request-id'];
-    console.log('xRequestId', xRequestId);
-    const event = extractDataId(query, body);
-    console.log('event', event);
     return this.payments.handleWebhook(query, body, {
       xSignature: typeof xSignature === 'string' ? xSignature : xSignature?.[0],
       xRequestId: typeof xRequestId === 'string' ? xRequestId : xRequestId?.[0],
-      dataId: event,
+      dataId: extractDataId(query, body),
     });
   }
 }
