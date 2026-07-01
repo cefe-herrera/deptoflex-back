@@ -27,11 +27,12 @@ export function validateMercadoPagoWebhookSignature(
   dataId: string | undefined,
   secret: string,
 ): boolean {
+  console.log('validateMercadoPagoWebhookSignature', headers, dataId, secret);
   if (!secret) return true;
-
+  console.log('secret', secret);
   const xSignature = headers.xSignature?.trim();
   if (!xSignature) return false;
-
+  console.log('xSignature', xSignature);
   let ts: string | undefined;
   let v1: string | undefined;
   for (const part of xSignature.split(',')) {
@@ -44,7 +45,8 @@ export function validateMercadoPagoWebhookSignature(
     if (key === 'v1') v1 = value;
   }
   if (!ts || !v1) return false;
-
+  console.log('ts', ts);
+  console.log('v1', v1);
   const manifestParts: string[] = [];
   if (dataId) manifestParts.push(`id:${dataId.toLowerCase()}`);
   if (headers.xRequestId) manifestParts.push(`request-id:${headers.xRequestId}`);
@@ -52,6 +54,7 @@ export function validateMercadoPagoWebhookSignature(
   const manifest = `${manifestParts.join(';')};`;
 
   const computed = createHmac('sha256', secret).update(manifest).digest('hex');
+  console.log('computed', computed);
   return safeEqualStrings(computed, v1);
 }
 

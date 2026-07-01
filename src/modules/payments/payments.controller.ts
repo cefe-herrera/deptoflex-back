@@ -32,8 +32,11 @@ export class PaymentsWebhookController {
   ) {
     console.log('handleMercadoPago', query, body, req.headers);
     const xSignature = req.headers['x-signature'];
+    console.log('xSignature', xSignature);
     const xRequestId = req.headers['x-request-id'];
+    console.log('xRequestId', xRequestId);
     const event = extractDataId(query, body);
+    console.log('event', event);
     return this.payments.handleWebhook(query, body, {
       xSignature: typeof xSignature === 'string' ? xSignature : xSignature?.[0],
       xRequestId: typeof xRequestId === 'string' ? xRequestId : xRequestId?.[0],

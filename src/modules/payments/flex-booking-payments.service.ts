@@ -320,16 +320,20 @@ export class FlexBookingPaymentsService {
     body: unknown,
     headers?: { xSignature?: string; xRequestId?: string; dataId?: string },
   ) {
+    console.log('handleWebhook', query, body, headers);
     if (!this.mercadoPago.isConfigured()) {
       this.logger.warn('Mercado Pago webhook received but MP is not configured');
       return { ok: true };
     }
 
     const event = extractMercadoPagoWebhookEvent(query, body);
+    console.log('event', event);
     const dataId = headers?.dataId ?? event?.resourceId;
-
+    console.log('dataId', dataId);
     const webhookSecret = this.config.get<string>('mercadopago.webhookSecret') ?? '';
+    console.log('webhookSecret', webhookSecret);
     if (webhookSecret) {
+      console.log('validating signature');
       const valid = validateMercadoPagoWebhookSignature(
         { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
         dataId,
