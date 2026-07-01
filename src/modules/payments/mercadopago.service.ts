@@ -38,6 +38,22 @@ export class MercadoPagoService {
     return Boolean(this.getAccessToken());
   }
 
+  /** True when credentials are MP sandbox (access token prefix TEST-). */
+  isSandboxCredentials(): boolean {
+    return this.getAccessToken().startsWith('TEST-');
+  }
+
+  /** Pick init_point vs sandbox_init_point based on MP credentials, not NODE_ENV. */
+  resolveCheckoutUrl(result: FlexCheckoutResult): string {
+    if (this.isSandboxCredentials()) {
+      const url = result.sandboxCheckoutUrl ?? result.checkoutUrl;
+      this.logger.log('Using sandbox checkout URL (TEST credentials)');
+      return url;
+    }
+    this.logger.log('Using production checkout URL');
+    return result.checkoutUrl;
+  }
+
   private getAccessToken(): string {
     return this.config.get<string>('mercadopago.accessToken') ?? '';
   }

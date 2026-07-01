@@ -244,10 +244,7 @@ export class FlexBookingPaymentsService {
       expirationDays,
     });
 
-    const isProduction = this.config.get<string>('app.nodeEnv') === 'production';
-    const checkoutUrl = isProduction
-      ? checkout.checkoutUrl
-      : (checkout.sandboxCheckoutUrl ?? checkout.checkoutUrl);
+    const checkoutUrl = this.mercadoPago.resolveCheckoutUrl(checkout);
 
     await this.prisma.flexBookingPayment.create({
       data: {
