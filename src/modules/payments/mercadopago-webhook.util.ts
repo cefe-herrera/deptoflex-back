@@ -5,6 +5,11 @@ export interface MercadoPagoWebhookHeaders {
   xRequestId?: string;
 }
 
+export interface MercadoPagoWebhookEvent {
+  type: string;
+  resourceId: string;
+}
+
 function safeEqualStrings(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -48,4 +53,37 @@ export function validateMercadoPagoWebhookSignature(
 
   const computed = createHmac('sha256', secret).update(manifest).digest('hex');
   return safeEqualStrings(computed, v1);
+}
+
+/** Normalizes MP webhook payloads from query (IPN) or JSON body (Webhooks v2). */
+export function extractMercadoPagoWebhookEvent(
+  query: Record<string, string | undefined>,
+  body: unknown,
+): MercadoPagoWebhookEvent | null {
+  const record = body && typeof body === 'object' && !Array.isArray(body)
+    ? body as Record<string, unknown>
+    : {};
+
+  const rawType = query.type ?? query.topic
+    ?? (typeof record.type === 'string' ? record.type : undefined)
+    ?? (typeof record.topic === 'string' ? record.topic : undefined)
+    ?? (typeof record.action === 'string' ? record.action.split('.')[0] : undefined);
+
+  const type = String(rawType ?? '').trim().toLowerCase();
+  if (!type) return null;
+
+  let resourceId = query['data.id'] ?? query.id ?? '';
+
+  if (!resourceId && record.data && typeof record.data === 'object') {
+    const data = record.data as Record<string, unknown>;
+    if (data.id != null) resourceId = String(data.id);
+  }
+  if (!resourceId && record.id != null && type !== 'payment') {
+    resourceId = String(record.id);
+  }
+
+  resourceId = resourceId.trim();
+  if (!resourceId) return null;
+
+  return { type, resourceId };
 }

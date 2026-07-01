@@ -20,4 +20,5 @@ export const validationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().required(),
   MERCADOPAGO_ACCESS_TOKEN: Joi.string().allow('').default(''),
   MERCADOPAGO_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  MERCADOPAGO_PAYMENT_LINK_EXPIRATION_DAYS: Joi.number().integer().min(1).max(30).default(7),
 });

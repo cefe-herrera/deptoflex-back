@@ -20,8 +20,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FlexBookingsService } from '../flex-bookings/flex-bookings.service';
 import { EmailService } from '../email/email.service';
 import { MercadoPagoService } from './mercadopago.service';
-import { validateMercadoPagoWebhookSignature } from './mercadopago-webhook.util';
+import {
+  extractMercadoPagoWebhookEvent,
+  validateMercadoPagoWebhookSignature,
+} from './mercadopago-webhook.util';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
+
+export interface SyncPublicPaymentInput {
+  paymentId?: string;
+  merchantOrderId?: string;
+}
 
 @Injectable()
 export class FlexBookingPaymentsService {
@@ -38,6 +46,15 @@ export class FlexBookingPaymentsService {
 
   static generatePaymentToken(): string {
     return randomBytes(24).toString('hex');
+  }
+
+  private paymentLinkExpirationDays(): number {
+    const days = this.config.get<number>('mercadopago.paymentLinkExpirationDays') ?? 7;
+    return Number.isFinite(days) && days > 0 ? days : 7;
+  }
+
+  private paymentLinkExpirationCutoff(): Date {
+    return new Date(Date.now() - this.paymentLinkExpirationDays() * 24 * 60 * 60 * 1000);
   }
 
   buildPaymentPageUrl(paymentToken: string): string {
@@ -73,6 +90,39 @@ export class FlexBookingPaymentsService {
     return this.buildPaymentLinkResponse(booking);
   }
 
+  async resendPaymentEmail(flexBookingId: string, user: CurrentUserPayload) {
+    const booking = await this.getAuthorizedBooking(flexBookingId, user);
+    const amount = booking.reservationPaymentAmount != null
+      ? Number(booking.reservationPaymentAmount)
+      : 0;
+
+    if (amount <= 0) {
+      throw new BadRequestException('Esta reserva no requiere pago online');
+    }
+    if (!booking.paymentToken) {
+      throw new BadRequestException('Esta reserva no tiene link de pago generado');
+    }
+    if (booking.status === FlexBookingStatus.CONFIRMED || booking.payments.length > 0) {
+      throw new BadRequestException('Esta reserva ya está pagada');
+    }
+    if (!booking.clientEmail?.trim()) {
+      throw new BadRequestException('La reserva no tiene email del huésped para reenviar');
+    }
+
+    await this.notifyGuestPaymentRequired({
+      clientEmail: booking.clientEmail.trim(),
+      clientName: booking.clientName,
+      propertyName: booking.propertyFlex.name,
+      amount,
+      currency: booking.currency,
+      paymentToken: booking.paymentToken,
+      startDate: booking.startDate,
+      endDate: booking.endDate,
+    });
+
+    return { sent: true, paymentUrl: this.buildPaymentPageUrl(booking.paymentToken) };
+  }
+
   async getPublicPaymentPage(paymentToken: string) {
     const booking = await this.prisma.flexBooking.findFirst({
       where: { paymentToken, deletedAt: null },
@@ -91,12 +141,19 @@ export class FlexBookingPaymentsService {
     const amount = booking.reservationPaymentAmount != null
       ? Number(booking.reservationPaymentAmount)
       : 0;
+    const expirationCutoff = this.paymentLinkExpirationCutoff();
     const latestPending = await this.prisma.flexBookingPayment.findFirst({
       where: {
         flexBookingId: booking.id,
         status: FlexBookingPaymentStatus.PENDING,
         checkoutUrl: { not: null },
+        createdAt: { gt: expirationCutoff },
       },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const latestPayment = await this.prisma.flexBookingPayment.findFirst({
+      where: { flexBookingId: booking.id },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -117,6 +174,7 @@ export class FlexBookingPaymentsService {
       isPaid: booking.status === FlexBookingStatus.CONFIRMED
         || booking.payments.length > 0,
       pendingCheckoutUrl: latestPending?.checkoutUrl ?? null,
+      paymentStatus: latestPayment?.status ?? null,
     };
   }
 
@@ -155,6 +213,29 @@ export class FlexBookingPaymentsService {
       throw new BadRequestException('El pago de esta reserva ya fue registrado');
     }
 
+    const expirationCutoff = this.paymentLinkExpirationCutoff();
+    const reusablePending = await this.prisma.flexBookingPayment.findFirst({
+      where: {
+        flexBookingId: booking.id,
+        status: FlexBookingPaymentStatus.PENDING,
+        checkoutUrl: { not: null },
+        createdAt: { gt: expirationCutoff },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (reusablePending?.checkoutUrl) {
+      return { checkoutUrl: reusablePending.checkoutUrl };
+    }
+
+    await this.prisma.flexBookingPayment.updateMany({
+      where: {
+        flexBookingId: booking.id,
+        status: FlexBookingPaymentStatus.PENDING,
+      },
+      data: { status: FlexBookingPaymentStatus.CANCELLED },
+    });
+
+    const expirationDays = this.paymentLinkExpirationDays();
     const backUrlBase = this.buildPaymentPageUrl(paymentToken);
     const checkout = await this.mercadoPago.createFlexCheckout({
       flexBookingId: booking.id,
@@ -163,6 +244,7 @@ export class FlexBookingPaymentsService {
       currency: booking.currency,
       payerEmail: booking.clientEmail,
       backUrlBase,
+      expirationDays,
     });
 
     const isProduction = this.config.get<string>('app.nodeEnv') === 'production';
@@ -185,8 +267,57 @@ export class FlexBookingPaymentsService {
     return { checkoutUrl };
   }
 
+  async syncPublicPayment(paymentToken: string, input: SyncPublicPaymentInput = {}) {
+    if (!this.mercadoPago.isConfigured()) {
+      throw new ServiceUnavailableException('Mercado Pago no está configurado');
+    }
+
+    const booking = await this.prisma.flexBooking.findFirst({
+      where: { paymentToken, deletedAt: null },
+    });
+    if (!booking) throw new NotFoundException('Reserva no encontrada');
+
+    await this.syncBookingPayments(booking.id, input);
+    return this.getPublicPaymentPage(paymentToken);
+  }
+
+  async reconcilePendingPayments() {
+    if (!this.mercadoPago.isConfigured()) return { processed: 0 };
+
+    const pendingBookings = await this.prisma.flexBooking.findMany({
+      where: {
+        deletedAt: null,
+        status: FlexBookingStatus.PENDING,
+        reservationPaymentAmount: { gt: 0 },
+      },
+      select: { id: true },
+      take: 50,
+    });
+
+    let processed = 0;
+    for (const booking of pendingBookings) {
+      try {
+        const before = await this.prisma.flexBooking.findUnique({
+          where: { id: booking.id },
+          select: { status: true },
+        });
+        await this.syncBookingPayments(booking.id);
+        const after = await this.prisma.flexBooking.findUnique({
+          where: { id: booking.id },
+          select: { status: true },
+        });
+        if (before?.status !== after?.status) processed += 1;
+      } catch (err) {
+        this.logger.warn(`Reconcile failed for flex booking ${booking.id}`, err);
+      }
+    }
+
+    return { processed };
+  }
+
   async handleWebhook(
     query: Record<string, string | undefined>,
+    body: unknown,
     headers?: { xSignature?: string; xRequestId?: string; dataId?: string },
   ) {
     if (!this.mercadoPago.isConfigured()) {
@@ -194,11 +325,14 @@ export class FlexBookingPaymentsService {
       return { ok: true };
     }
 
+    const event = extractMercadoPagoWebhookEvent(query, body);
+    const dataId = headers?.dataId ?? event?.resourceId;
+
     const webhookSecret = this.config.get<string>('mercadopago.webhookSecret') ?? '';
     if (webhookSecret) {
       const valid = validateMercadoPagoWebhookSignature(
         { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
-        headers?.dataId,
+        dataId,
         webhookSecret,
       );
       if (!valid) {
@@ -209,14 +343,34 @@ export class FlexBookingPaymentsService {
       this.logger.warn('MERCADOPAGO_WEBHOOK_SECRET not set — webhook signature not validated');
     }
 
-    const type = query.type ?? query.topic;
-    const paymentId = query['data.id'] ?? query.id;
+    if (!event) {
+      this.logger.debug('Mercado Pago webhook ignored: no recognizable event');
+      return { ok: true };
+    }
 
-    if ((type === 'payment' || type === 'merchant_order') && paymentId) {
-      await this.processPaymentNotification(String(paymentId));
+    try {
+      if (event.type === 'payment' || event.type.startsWith('payment.')) {
+        await this.processPaymentNotification(event.resourceId);
+      } else if (event.type === 'merchant_order') {
+        await this.processMerchantOrderNotification(event.resourceId);
+      } else {
+        this.logger.debug(`Mercado Pago webhook ignored: type=${event.type}`);
+      }
+    } catch (err) {
+      this.logger.error(
+        `Mercado Pago webhook processing failed (type=${event.type}, id=${event.resourceId})`,
+        err,
+      );
     }
 
     return { ok: true };
+  }
+
+  async processMerchantOrderNotification(merchantOrderId: string) {
+    const paymentIds = await this.mercadoPago.getMerchantOrderPaymentIds(merchantOrderId);
+    for (const paymentId of paymentIds) {
+      await this.processPaymentNotification(paymentId);
+    }
   }
 
   async processPaymentNotification(mpPaymentId: string) {
@@ -224,6 +378,11 @@ export class FlexBookingPaymentsService {
 
     if (payment.status === 'approved') {
       await this.confirmApprovedPayment(payment);
+      return;
+    }
+
+    if (payment.status === 'refunded' || payment.status === 'charged_back') {
+      await this.handleRefundedPayment(payment);
       return;
     }
 
@@ -244,6 +403,28 @@ export class FlexBookingPaymentsService {
         status,
       },
     });
+  }
+
+  private async syncBookingPayments(flexBookingId: string, input: SyncPublicPaymentInput = {}) {
+    const paymentIds = new Set<string>();
+    if (input.paymentId) paymentIds.add(input.paymentId);
+
+    if (input.merchantOrderId) {
+      const orderPaymentIds = await this.mercadoPago.getMerchantOrderPaymentIds(input.merchantOrderId);
+      orderPaymentIds.forEach((id) => paymentIds.add(id));
+    }
+
+    if (paymentIds.size === 0) {
+      const found = await this.mercadoPago.searchPaymentsByExternalReference(flexBookingId);
+      for (const payment of found) {
+        await this.processPaymentNotification(payment.id);
+      }
+      return;
+    }
+
+    for (const paymentId of paymentIds) {
+      await this.processPaymentNotification(paymentId);
+    }
   }
 
   private async confirmApprovedPayment(payment: {
@@ -334,6 +515,23 @@ export class FlexBookingPaymentsService {
     }
   }
 
+  private async handleRefundedPayment(payment: {
+    id: string;
+    externalReference: string | null;
+  }) {
+    const flexBookingId = payment.externalReference;
+    if (!flexBookingId) return;
+
+    await this.prisma.flexBookingPayment.updateMany({
+      where: { mpPaymentId: payment.id },
+      data: { status: FlexBookingPaymentStatus.REFUNDED },
+    });
+
+    this.logger.warn(
+      `MP payment ${payment.id} refunded/charged back for flex booking ${flexBookingId} — manual review required`,
+    );
+  }
+
   private mapMpStatus(status: string): FlexBookingPaymentStatus | null {
     switch (status) {
       case 'rejected':
@@ -341,6 +539,7 @@ export class FlexBookingPaymentsService {
       case 'cancelled':
         return FlexBookingPaymentStatus.CANCELLED;
       case 'refunded':
+      case 'charged_back':
         return FlexBookingPaymentStatus.REFUNDED;
       case 'pending':
       case 'in_process':

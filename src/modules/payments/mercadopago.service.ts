@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import { MercadoPagoConfig, MerchantOrder, Payment, Preference } from 'mercadopago';
 
 export interface CreateFlexCheckoutInput {
   flexBookingId: string;
@@ -9,12 +9,14 @@ export interface CreateFlexCheckoutInput {
   currency: string;
   payerEmail?: string | null;
   backUrlBase: string;
+  expirationDays: number;
 }
 
 export interface FlexCheckoutResult {
   preferenceId: string;
   checkoutUrl: string;
   sandboxCheckoutUrl: string | null;
+  expiresAt: Date;
 }
 
 export interface MercadoPagoPaymentInfo {
@@ -57,6 +59,7 @@ export class MercadoPagoService {
     const appUrl = this.config.get<string>('app.url') ?? 'http://localhost:3000';
     const notificationUrl = `${appUrl.replace(/\/$/, '')}/api/v1/webhooks/mercadopago`;
 
+    const expiresAt = new Date(Date.now() + input.expirationDays * 24 * 60 * 60 * 1000);
     const backUrl = input.backUrlBase.replace(/\/$/, '');
     const response = await preference.create({
       body: {
@@ -78,6 +81,7 @@ export class MercadoPagoService {
           pending: `${backUrl}?status=pending`,
         },
         auto_return: 'approved',
+        date_of_expiration: expiresAt.toISOString(),
       },
     });
 
@@ -90,7 +94,7 @@ export class MercadoPagoService {
       throw new Error('Mercado Pago did not return a checkout URL');
     }
 
-    return { preferenceId, checkoutUrl, sandboxCheckoutUrl };
+    return { preferenceId, checkoutUrl, sandboxCheckoutUrl, expiresAt };
   }
 
   async getPayment(paymentId: string): Promise<MercadoPagoPaymentInfo> {
@@ -105,5 +109,34 @@ export class MercadoPagoService {
       transactionAmount: Number(raw.transaction_amount ?? 0),
       currencyId: String(raw.currency_id ?? 'ARS'),
     };
+  }
+
+  async searchPaymentsByExternalReference(externalReference: string): Promise<MercadoPagoPaymentInfo[]> {
+    const client = this.getClient();
+    const paymentClient = new Payment(client);
+    const response = await paymentClient.search({
+      options: {
+        external_reference: externalReference,
+        sort: 'date_created',
+        criteria: 'desc',
+      },
+    });
+
+    return (response.results ?? []).map((raw) => ({
+      id: String(raw.id ?? ''),
+      status: String(raw.status ?? ''),
+      externalReference: raw.external_reference != null ? String(raw.external_reference) : null,
+      transactionAmount: Number(raw.transaction_amount ?? 0),
+      currencyId: String(raw.currency_id ?? 'ARS'),
+    })).filter((p) => p.id);
+  }
+
+  async getMerchantOrderPaymentIds(merchantOrderId: string): Promise<string[]> {
+    const client = this.getClient();
+    const merchantOrderClient = new MerchantOrder(client);
+    const order = await merchantOrderClient.get({ merchantOrderId });
+    return (order.payments ?? [])
+      .map((p) => (p.id != null ? String(p.id) : ''))
+      .filter(Boolean);
   }
 }

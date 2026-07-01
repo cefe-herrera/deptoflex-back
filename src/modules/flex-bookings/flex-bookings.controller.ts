@@ -50,6 +50,21 @@ export class FlexBookingsController {
     return this.flexBookingsService.getPaymentLink(id, user);
   }
 
+  @Post(':id/resend-payment-email')
+  @HttpCode(HttpStatus.OK)
+  @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
+  @ApiOperation({
+    summary: 'Reenviar email de pago al huésped',
+    description: 'Envía nuevamente el link de pago Mercado Pago al email del huésped.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  resendPaymentEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.flexBookingsService.resendPaymentEmail(id, user);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener reserva flex por ID',

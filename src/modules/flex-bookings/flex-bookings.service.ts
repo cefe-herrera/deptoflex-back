@@ -245,6 +245,10 @@ export class FlexBookingsService {
     return this.flexBookingPayments.getPaymentLinkForBooking(id, user);
   }
 
+  async resendPaymentEmail(id: string, user: CurrentUserPayload) {
+    return this.flexBookingPayments.resendPaymentEmail(id, user);
+  }
+
   async findAll(query: QueryFlexBookingDto) {
     const { page = 1, limit = 20, propertyFlexId, professionalProfileId, status, startDateFrom, startDateTo } = query;
     const skip = (page - 1) * limit;
