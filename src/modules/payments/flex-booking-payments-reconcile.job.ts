@@ -16,11 +16,10 @@ export class FlexBookingPaymentsReconcileJob {
   async reconcilePendingFlexPayments() {
     if (!this.mercadoPago.isConfigured()) return;
 
+    this.logger.log('Starting flex payment reconciliation…');
     try {
       const result = await this.payments.reconcilePendingPayments();
-      if (result.processed > 0) {
-        this.logger.log(`Reconciled ${result.processed} flex booking payment(s) via Mercado Pago`);
-      }
+      this.logger.log(`Reconciliation finished processed=${result.processed}`);
     } catch (err) {
       this.logger.error('Flex booking payment reconciliation failed', err);
     }

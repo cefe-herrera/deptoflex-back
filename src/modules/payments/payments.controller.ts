@@ -1,6 +1,6 @@
 import {
   Body,
-  Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, UseGuards,
+  Controller, Get, HttpCode, HttpStatus, Logger, Param, Post, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
@@ -17,10 +17,11 @@ class SyncPublicPaymentDto {
 @Controller('webhooks')
 @UseGuards(ThrottlerGuard)
 export class PaymentsWebhookController {
+  private readonly logger = new Logger(PaymentsWebhookController.name);
+
   constructor(private payments: FlexBookingPaymentsService) {}
 
   @Public()
-  @Get('mercadopago')
   @Post('mercadopago')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -32,10 +33,18 @@ export class PaymentsWebhookController {
   ) {
     const xSignature = req.headers['x-signature'];
     const xRequestId = req.headers['x-request-id'];
+    const dataId = extractDataId(query, body);
+
+    this.logger.log(
+      `MP webhook received method=${req.method} `
+      + `topic=${query.topic ?? query.type ?? '-'} id=${query.id ?? dataId ?? '-'} `
+      + `hasBody=${body != null && typeof body === 'object'} hasSignature=${!!xSignature}`,
+    );
+
     return this.payments.handleWebhook(query, body, {
       xSignature: typeof xSignature === 'string' ? xSignature : xSignature?.[0],
       xRequestId: typeof xRequestId === 'string' ? xRequestId : xRequestId?.[0],
-      dataId: extractDataId(query, body),
+      dataId,
     });
   }
 }
@@ -60,6 +69,8 @@ function extractDataId(
 @Controller('public/flex-bookings/pay')
 @UseGuards(ThrottlerGuard)
 export class PublicFlexPaymentsController {
+  private readonly logger = new Logger(PublicFlexPaymentsController.name);
+
   constructor(private payments: FlexBookingPaymentsService) {}
 
   @Public()
@@ -78,6 +89,7 @@ export class PublicFlexPaymentsController {
   @ApiOperation({ summary: 'Generar checkout Mercado Pago para huésped (sin auth)' })
   @ApiParam({ name: 'token', description: 'Token de pago de la reserva' })
   createCheckout(@Param('token') token: string) {
+    this.logger.log(`Creating MP checkout token=${token.slice(0, 8)}…`);
     return this.payments.createPublicCheckout(token);
   }
 
@@ -93,6 +105,10 @@ export class PublicFlexPaymentsController {
     @Param('token') token: string,
     @Body() dto: SyncPublicPaymentDto,
   ) {
+    this.logger.log(
+      `Sync payment token=${token.slice(0, 8)}… `
+      + `paymentId=${dto.paymentId ?? '-'} merchantOrderId=${dto.merchantOrderId ?? '-'}`,
+    );
     return this.payments.syncPublicPayment(token, {
       paymentId: dto.paymentId,
       merchantOrderId: dto.merchantOrderId,

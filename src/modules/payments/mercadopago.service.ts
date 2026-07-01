@@ -94,6 +94,11 @@ export class MercadoPagoService {
       throw new Error('Mercado Pago did not return a checkout URL');
     }
 
+    this.logger.log(
+      `Preference created booking=${input.flexBookingId} preferenceId=${preferenceId} `
+      + `amount=${input.amount} expires=${expiresAt.toISOString()}`,
+    );
+
     return { preferenceId, checkoutUrl, sandboxCheckoutUrl, expiresAt };
   }
 
@@ -102,13 +107,15 @@ export class MercadoPagoService {
     const paymentClient = new Payment(client);
     const raw = await paymentClient.get({ id: paymentId });
 
-    return {
+    const info = {
       id: String(raw.id ?? paymentId),
       status: String(raw.status ?? ''),
       externalReference: raw.external_reference != null ? String(raw.external_reference) : null,
       transactionAmount: Number(raw.transaction_amount ?? 0),
       currencyId: String(raw.currency_id ?? 'ARS'),
     };
+    this.logger.log(`getPayment ${info.id} status=${info.status} ref=${info.externalReference ?? '-'}`);
+    return info;
   }
 
   async searchPaymentsByExternalReference(externalReference: string): Promise<MercadoPagoPaymentInfo[]> {
@@ -122,13 +129,19 @@ export class MercadoPagoService {
       },
     });
 
-    return (response.results ?? []).map((raw) => ({
+    const results = (response.results ?? []).map((raw) => ({
       id: String(raw.id ?? ''),
       status: String(raw.status ?? ''),
       externalReference: raw.external_reference != null ? String(raw.external_reference) : null,
       transactionAmount: Number(raw.transaction_amount ?? 0),
       currencyId: String(raw.currency_id ?? 'ARS'),
     })).filter((p) => p.id);
+
+    this.logger.log(
+      `searchPayments externalReference=${externalReference} found=${results.length} `
+      + `ids=[${results.map((p) => `${p.id}:${p.status}`).join(',')}]`,
+    );
+    return results;
   }
 
   async getMerchantOrderContext(merchantOrderId: string): Promise<{
@@ -146,6 +159,11 @@ export class MercadoPagoService {
     const externalReference = order.external_reference != null
       ? String(order.external_reference)
       : null;
+
+    this.logger.log(
+      `getMerchantOrder ${merchantOrderId} paymentIds=[${paymentIds.join(',')}] `
+      + `externalReference=${externalReference ?? '-'} orderStatus=${order.status ?? '-'}`,
+    );
 
     return { paymentIds, externalReference };
   }
