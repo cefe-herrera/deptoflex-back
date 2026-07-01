@@ -6,7 +6,6 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
-  UnauthorizedException,
   forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,10 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FlexBookingsService } from '../flex-bookings/flex-bookings.service';
 import { EmailService } from '../email/email.service';
 import { MercadoPagoService } from './mercadopago.service';
-import {
-  extractMercadoPagoWebhookEvent,
-  validateMercadoPagoWebhookSignature,
-} from './mercadopago-webhook.util';
+import { extractMercadoPagoWebhookEvent } from './mercadopago-webhook.util';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
 export interface SyncPublicPaymentInput {
@@ -344,25 +340,6 @@ export class FlexBookingPaymentsService {
       `Webhook parsed event=${event ? `${event.type}:${event.resourceId}` : 'none'} `
       + `dataId=${dataId ?? '-'} xRequestId=${headers?.xRequestId ?? '-'}`,
     );
-
-    const webhookSecret = this.config.get<string>('mercadopago.webhookSecret') ?? '';
-    if (webhookSecret) {
-      const valid = validateMercadoPagoWebhookSignature(
-        { xSignature: headers?.xSignature, xRequestId: headers?.xRequestId },
-        dataId,
-        webhookSecret,
-      );
-      this.logger.log(`Webhook signature validation=${valid ? 'OK' : 'FAILED'}`);
-      if (!valid) {
-        this.logger.warn(
-          `Invalid Mercado Pago webhook signature dataId=${dataId ?? '-'} `
-          + `hasXSignature=${!!headers?.xSignature}`,
-        );
-        throw new UnauthorizedException('Invalid webhook signature');
-      }
-    } else {
-      this.logger.warn('MERCADOPAGO_WEBHOOK_SECRET not set — webhook signature not validated');
-    }
 
     if (!event) {
       this.logger.warn(`Webhook ignored: unrecognized payload queryKeys=${Object.keys(query).join(',')}`);
