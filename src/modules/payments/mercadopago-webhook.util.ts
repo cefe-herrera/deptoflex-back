@@ -11,9 +11,12 @@ export interface MercadoPagoWebhookEvent {
 }
 
 function safeEqualStrings(a: string, b: string): boolean {
+  console.log('safeEqualStrings', a, b);
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
+  //if (bufA.length !== bufB.length) return false;
+  console.log('bufA', bufA);
+  console.log('bufB', bufB);
   return timingSafeEqual(bufA, bufB);
 }
 
