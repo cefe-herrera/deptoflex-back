@@ -155,6 +155,46 @@ export class EmailService {
         });
     }
 
+    async sendAgencyMemberInvitationEmail(
+        email: string,
+        registerLink: string,
+        agencyName: string,
+    ): Promise<boolean> {
+        return this.send({
+            to: email,
+            subject: `Weflex - Invitación de ${agencyName}`,
+            html: this.layout(
+                'Invitación a Weflex',
+                `
+          <p><strong>${agencyName}</strong> te invitó a crear tu cuenta en Weflex como embajador de la agencia.</p>
+          <p>Hacé click en el botón para completar tu registro:</p>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="${registerLink}" style="${this.buttonStyle()}">Crear mi cuenta</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;">Si no esperabas esta invitación, podés ignorar este mensaje.</p>
+        `,
+            ),
+        });
+    }
+
+    async sendRegistrationInvitationEmail(email: string, registerLink: string): Promise<boolean> {
+        return this.send({
+            to: email,
+            subject: 'Weflex - Te invitaron a registrarte',
+            html: this.layout(
+                'Invitación a Weflex',
+                `
+          <p>Te invitaron a crear tu cuenta en Weflex.</p>
+          <p>Hacé click en el botón para completar tu registro:</p>
+          <p style="text-align:center;margin:28px 0;">
+            <a href="${registerLink}" style="${this.buttonStyle()}">Crear mi cuenta</a>
+          </p>
+          <p style="color:#64748b;font-size:13px;">Si no esperabas esta invitación, podés ignorar este mensaje.</p>
+        `,
+            ),
+        });
+    }
+
     async sendFlexReservationConfirmedEmail(
         email: string,
         clientName: string,

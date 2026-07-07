@@ -31,7 +31,7 @@ export class AgencyTeamMemberDto {
   @ApiProperty({ example: 'juan@agencia.com' })
   @IsEmail()
   @MaxLength(255)
-  @Transform(({ value }) => value?.trim())
+  @Transform(({ value }) => value?.toLowerCase().trim())
   email: string;
 
   @ApiProperty({ example: 'Asesor comercial' })

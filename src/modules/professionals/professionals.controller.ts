@@ -2,8 +2,10 @@ import {
   Controller, Get, Patch, Post, Body, Param, ParseUUIDPipe, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ProfessionalsService } from './professionals.service';
+import { AgencyTeamService } from './agency-team.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
+import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { MediaService } from '../media/media.service';
@@ -18,6 +20,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestj
 export class ProfessionalsController {
   constructor(
     private professionalsService: ProfessionalsService,
+    private agencyTeamService: AgencyTeamService,
     private mediaService: MediaService,
   ) { }
 
@@ -37,6 +40,71 @@ export class ProfessionalsController {
   })
   updateMe(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateProfessionalDto) {
     return this.professionalsService.update(user.id, dto);
+  }
+
+  @Get('me/agency-team')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Listar cuentas del equipo de la agencia',
+    description: 'Solo embajadores agencia aprobados (titular). Devuelve miembros del equipo con estado de cuenta.',
+  })
+  listAgencyTeam(@CurrentUser() user: CurrentUserPayload) {
+    return this.agencyTeamService.listTeam(user.id);
+  }
+
+  @Post('me/agency-team')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Alta de cuenta de equipo',
+    description: 'Agrega un miembro del equipo y envía invitación por email. Solo titular de agencia aprobada.',
+  })
+  addAgencyTeamMember(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: AgencyTeamMemberDto,
+  ) {
+    return this.agencyTeamService.addTeamMember(user.id, dto);
+  }
+
+  @Patch('me/agency-team/:memberId/deactivate')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Baja de cuenta de equipo',
+    description: 'Desactiva un miembro del equipo y su cuenta Weflex si ya se registró.',
+  })
+  @ApiParam({ name: 'memberId', type: String, format: 'uuid' })
+  deactivateAgencyTeamMember(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ) {
+    return this.agencyTeamService.deactivateTeamMember(user.id, memberId);
+  }
+
+  @Patch('me/agency-team/:memberId/activate')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Reactivar cuenta de equipo',
+    description: 'Reactiva un miembro dado de baja. Si aún no se registró, reenvía invitación.',
+  })
+  @ApiParam({ name: 'memberId', type: String, format: 'uuid' })
+  activateAgencyTeamMember(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ) {
+    return this.agencyTeamService.activateTeamMember(user.id, memberId);
+  }
+
+  @Post('me/agency-team/:memberId/resend-invitation')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Reenviar invitación',
+    description: 'Reenvía el email de invitación a un miembro pendiente de registro.',
+  })
+  @ApiParam({ name: 'memberId', type: String, format: 'uuid' })
+  resendAgencyTeamInvitation(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ) {
+    return this.agencyTeamService.resendInvitation(user.id, memberId);
   }
 
   @Get()

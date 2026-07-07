@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
+import { SendInvitationDto } from './dto/send-invitation.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
@@ -49,6 +50,27 @@ export class UsersController {
     @Query('search') search?: string,
   ) {
     return this.usersService.findAll(+page, +limit, search);
+  }
+
+  @Get('invitations/link')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Obtener link de invitación al registro',
+    description: 'Devuelve el enlace de registro de Weflex. Si se indica email, valida que no exista. Solo ADMIN.',
+  })
+  @ApiQuery({ name: 'email', required: false, type: String })
+  getInvitationLink(@Query('email') email?: string) {
+    return this.usersService.getRegistrationInvitationLink(email);
+  }
+
+  @Post('invitations')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Enviar invitación por email',
+    description: 'Valida que el email no esté registrado y envía invitación al registro. Solo ADMIN.',
+  })
+  sendInvitation(@Body() dto: SendInvitationDto) {
+    return this.usersService.sendRegistrationInvitation(dto.email);
   }
 
   @Get(':id/role-audit')

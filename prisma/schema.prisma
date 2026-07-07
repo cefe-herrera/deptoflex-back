@@ -206,6 +206,7 @@ model User {
   roleAssignmentsMade           UserRole[]                   @relation("RoleAssignedBy")
   externalRequests              ExternalRequest[]
   commissionSettlementsPaid     CommissionSettlement[]       @relation("CommissionSettlementPaidBy")
+  agencyTeamMembership          AgencyTeamMember?
 
   @@index([email])
   @@index([deletedAt])
@@ -358,20 +359,26 @@ model AmbassadorDocument {
 }
 
 model AgencyTeamMember {
-  id               String   @id @default(uuid()) @db.Uuid
-  agencyProfileId  String   @map("agency_profile_id") @db.Uuid
-  companyProfileId String?  @map("company_profile_id") @db.Uuid
-  firstName        String   @map("first_name") @db.VarChar(100)
-  lastName         String   @map("last_name") @db.VarChar(100)
-  dni              String   @db.VarChar(20)
-  phone            String   @db.VarChar(30)
-  email            String   @db.VarChar(255)
-  roleInCompany    String   @map("role_in_company") @db.VarChar(100)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id               String    @id @default(uuid()) @db.Uuid
+  agencyProfileId  String    @map("agency_profile_id") @db.Uuid
+  companyProfileId String?   @map("company_profile_id") @db.Uuid
+  userId           String?   @unique @map("user_id") @db.Uuid
+  firstName        String    @map("first_name") @db.VarChar(100)
+  lastName         String    @map("last_name") @db.VarChar(100)
+  dni              String    @db.VarChar(20)
+  phone            String    @db.VarChar(30)
+  email            String    @db.VarChar(255)
+  roleInCompany    String    @map("role_in_company") @db.VarChar(100)
+  isActive         Boolean   @default(true) @map("is_active")
+  invitedAt        DateTime? @map("invited_at") @db.Timestamptz
+  deactivatedAt    DateTime? @map("deactivated_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
 
   agencyProfile  ProfessionalProfile @relation("AgencyTeamMembers", fields: [agencyProfileId], references: [id], onDelete: Cascade)
   companyProfile CompanyProfile?     @relation(fields: [companyProfileId], references: [id], onDelete: SetNull)
+  user           User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@unique([agencyProfileId, email])
   @@index([agencyProfileId])
   @@map("agency_team_members")
 }

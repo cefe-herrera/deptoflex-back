@@ -1,7 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenService } from '../auth/token.service';
 import { AuditService } from '../../common/services/audit.service';
+import { EmailService } from '../email/email.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const USER_ROLE_SELECT = {
@@ -22,7 +30,53 @@ export class UsersService {
     private prisma: PrismaService,
     private tokenService: TokenService,
     private auditService: AuditService,
+    private emailService: EmailService,
+    private configService: ConfigService,
   ) {}
+
+  private getRegisterBaseUrl(): string {
+    const configured = this.configService.get<string>('app.frontendUrl')?.replace(/\/$/, '');
+    if (configured && !configured.includes('localhost')) {
+      return configured;
+    }
+    return 'https://weflex.com.ar';
+  }
+
+  buildRegistrationLink(email?: string): string {
+    const base = `${this.getRegisterBaseUrl()}/register`;
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) return base;
+    return `${base}?email=${encodeURIComponent(normalized)}`;
+  }
+
+  async assertEmailAvailable(email: string): Promise<string> {
+    const normalized = email.trim().toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { email: normalized, deletedAt: null },
+    });
+    if (existing) {
+      throw new ConflictException('El email ya está registrado');
+    }
+    return normalized;
+  }
+
+  async getRegistrationInvitationLink(email?: string) {
+    let normalized: string | undefined;
+    if (email?.trim()) {
+      normalized = await this.assertEmailAvailable(email);
+    }
+    return { link: this.buildRegistrationLink(normalized) };
+  }
+
+  async sendRegistrationInvitation(email: string) {
+    const normalized = await this.assertEmailAvailable(email);
+    const link = this.buildRegistrationLink(normalized);
+    const sent = await this.emailService.sendRegistrationInvitationEmail(normalized, link);
+    if (!sent) {
+      throw new ServiceUnavailableException('No se pudo enviar el email de invitación');
+    }
+    return { link, sent: true, email: normalized };
+  }
 
   async findAll(page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;

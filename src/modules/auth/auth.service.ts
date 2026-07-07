@@ -72,6 +72,7 @@ export class AuthService {
 
     const token = await this.createVerificationToken(user.id, TokenType.EMAIL_VERIFICATION);
     await this.emailService.sendVerificationEmail(user.email, token);
+    await this.linkAgencyTeamMember(user.id, user.email);
 
     return {
       id: user.id,
@@ -311,6 +312,53 @@ export class AuthService {
       roles: userRoles.map((ur) => ur.role.name),
       professionalProfile,
     };
+  }
+
+  private async linkAgencyTeamMember(userId: string, email: string): Promise<void> {
+    const member = await this.prisma.agencyTeamMember.findFirst({
+      where: {
+        email: { equals: email.toLowerCase(), mode: 'insensitive' },
+        userId: null,
+        isActive: true,
+      },
+    });
+    if (!member) return;
+
+    const ambassadorRole = await this.prisma.role.findUnique({ where: { name: 'AMBASSADOR' } });
+    if (!ambassadorRole) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.agencyTeamMember.update({
+        where: { id: member.id },
+        data: { userId },
+      });
+
+      await tx.userRole.upsert({
+        where: { userId_roleId: { userId, roleId: ambassadorRole.id } },
+        create: { userId, roleId: ambassadorRole.id },
+        update: {},
+      });
+
+      if (member.companyProfileId) {
+        const profile = await tx.professionalProfile.findUnique({ where: { userId } });
+        if (profile) {
+          await tx.userCompanyMembership.upsert({
+            where: {
+              professionalProfileId_companyProfileId: {
+                professionalProfileId: profile.id,
+                companyProfileId: member.companyProfileId,
+              },
+            },
+            create: {
+              professionalProfileId: profile.id,
+              companyProfileId: member.companyProfileId,
+              role: 'MEMBER',
+            },
+            update: {},
+          });
+        }
+      }
+    });
   }
 
   private async createVerificationToken(
