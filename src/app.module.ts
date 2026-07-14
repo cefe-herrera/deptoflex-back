@@ -34,6 +34,7 @@ import { ActivityModule } from './modules/activity/activity.module';
 import { PublicCatalogModule } from './modules/public-catalog/public-catalog.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AmbassadorsModule } from './modules/ambassadors/ambassadors.module';
+import { AmbassadorAccessModule } from './common/services/ambassador-access.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -52,6 +53,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     ]),
     ScheduleModule.forRoot(),
     PrismaModule,
+    AmbassadorAccessModule,
     R2Module,
     AuthModule,
     UsersModule,

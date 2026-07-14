@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 
 import { AmbassadorDocumentType } from '@prisma/client';
 
@@ -8,9 +8,15 @@ import { CommissionRatesService } from '../commissions/commission-rates.service'
 
 import { MediaService } from '../media/media.service';
 
+import { AmbassadorAccessService } from '../../common/services/ambassador-access.service';
+
+import { AgencyTeamService } from './agency-team.service';
+
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
+
+import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
 
 
 
@@ -26,7 +32,68 @@ export class ProfessionalsService {
 
     private mediaService: MediaService,
 
+    private ambassadorAccess: AmbassadorAccessService,
+
+    private agencyTeamService: AgencyTeamService,
+
   ) {}
+
+  private normalizeTeamMembers(
+    members: AgencyTeamMemberDto[] | undefined,
+    ownerEmail: string,
+  ): AgencyTeamMemberDto[] {
+    if (!members?.length) {
+      throw new BadRequestException('Debés indicar al menos un miembro del equipo');
+    }
+
+    const owner = ownerEmail.trim().toLowerCase();
+    const seen = new Set<string>();
+    const normalized: AgencyTeamMemberDto[] = [];
+
+    for (const member of members) {
+      const email = member.email.trim().toLowerCase();
+      if (email === owner) {
+        throw new BadRequestException('No podés incluir tu propio email como miembro del equipo');
+      }
+      if (seen.has(email)) {
+        throw new BadRequestException(`El email ${email} está repetido en el equipo`);
+      }
+      seen.add(email);
+      normalized.push({
+        ...member,
+        email,
+        firstName: member.firstName.trim(),
+        lastName: member.lastName.trim() || '—',
+      });
+    }
+
+    return normalized;
+  }
+
+  private async assertTeamEmailsAvailable(
+    members: AgencyTeamMemberDto[],
+    agencyProfileId: string,
+  ): Promise<void> {
+    for (const member of members) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: { email: member.email, deletedAt: null },
+      });
+      if (existingUser) {
+        throw new ConflictException(`El email ${member.email} ya tiene una cuenta en Weflex`);
+      }
+
+      const onOtherAgency = await this.prisma.agencyTeamMember.findFirst({
+        where: {
+          email: { equals: member.email, mode: 'insensitive' },
+          agencyProfileId: { not: agencyProfileId },
+          isActive: true,
+        },
+      });
+      if (onOtherAgency) {
+        throw new ConflictException(`El email ${member.email} ya pertenece a otra agencia`);
+      }
+    }
+  }
 
 
 
@@ -176,7 +243,10 @@ export class ProfessionalsService {
 
       where: { userId },
 
-      include: { user: { select: { email: true } } },
+      include: {
+        user: { select: { email: true } },
+        companyMemberships: { include: { companyProfile: true } },
+      },
 
     });
 
@@ -190,10 +260,15 @@ export class ProfessionalsService {
 
     }
 
-    if (profile.ambassadorRequestedAt) {
+    if (profile.status === 'PENDING' && profile.ambassadorRequestedAt) {
 
       throw new ConflictException('Ambassador request already submitted');
 
+    }
+
+    const canResubmit = profile.status === 'REJECTED' || profile.status === 'SUSPENDED';
+    if (!canResubmit && profile.ambassadorRequestedAt) {
+      throw new ConflictException('Ambassador request already submitted');
     }
 
 
@@ -201,6 +276,14 @@ export class ProfessionalsService {
     const contactEmail = dto.email ?? profile.user.email;
 
     const isCompany = dto.personType === 'COMPANY';
+
+    const teamMembers = isCompany
+      ? this.normalizeTeamMembers(dto.teamMembers, contactEmail)
+      : undefined;
+
+    if (isCompany) {
+      await this.assertTeamEmailsAvailable(teamMembers!, profile.id);
+    }
 
     const docPayload = isCompany
 
@@ -294,15 +377,28 @@ export class ProfessionalsService {
 
         };
 
+    const claim = await this.prisma.professionalProfile.updateMany({
+
+      where: {
+        userId,
+        status: { not: 'ACTIVE' },
+        OR: [
+          { ambassadorRequestedAt: null },
+          { status: { in: ['REJECTED', 'SUSPENDED'] } },
+        ],
+      },
+
+      data: profileData,
+
+    });
+
+    if (claim.count !== 1) {
+      throw new ConflictException('Ambassador request already submitted');
+    }
+
     return this.prisma.$transaction(async (tx) => {
 
-      const updatedProfile = await tx.professionalProfile.update({
-
-        where: { userId },
-
-        data: profileData,
-
-      });
+      const updatedProfile = await tx.professionalProfile.findUniqueOrThrow({ where: { userId } });
 
       for (const doc of docPayload) {
 
@@ -344,65 +440,86 @@ export class ProfessionalsService {
 
       }
 
-      if (isCompany) {
+      if (isCompany && teamMembers) {
 
-        const company = await tx.companyProfile.create({
+        let companyId = profile.companyMemberships.find((m) => m.role === 'OWNER')?.companyProfileId ?? null;
 
-          data: {
+        const existingByTaxId = dto.cuit
+          ? await tx.companyProfile.findUnique({ where: { taxId: dto.cuit } })
+          : null;
 
-            name: dto.legalName!,
+        if (existingByTaxId) {
+          companyId = existingByTaxId.id;
+          await tx.companyProfile.update({
+            where: { id: existingByTaxId.id },
+            data: {
+              name: dto.legalName!,
+              address: dto.fiscalAddress,
+              phone: dto.phone,
+              email: contactEmail,
+            },
+          });
+        } else {
+          const company = await tx.companyProfile.create({
 
-            taxId: dto.cuit,
+            data: {
 
-            address: dto.fiscalAddress,
+              name: dto.legalName!,
 
-            phone: dto.phone,
+              taxId: dto.cuit,
 
-            email: contactEmail,
+              address: dto.fiscalAddress,
 
-            memberships: {
+              phone: dto.phone,
 
-              create: {
-
-                professionalProfileId: profile.id,
-
-                role: 'OWNER',
-
-              },
+              email: contactEmail,
 
             },
 
-          },
+          });
+          companyId = company.id;
+        }
 
+        await tx.userCompanyMembership.upsert({
+          where: {
+            professionalProfileId_companyProfileId: {
+              professionalProfileId: profile.id,
+              companyProfileId: companyId!,
+            },
+          },
+          create: {
+            professionalProfileId: profile.id,
+            companyProfileId: companyId!,
+            role: 'OWNER',
+          },
+          update: { role: 'OWNER' },
         });
 
-        if (dto.teamMembers?.length) {
+        await tx.agencyTeamMember.deleteMany({ where: { agencyProfileId: profile.id } });
 
-          await tx.agencyTeamMember.createMany({
+        await tx.agencyTeamMember.createMany({
 
-            data: dto.teamMembers.map((member) => ({
+          data: teamMembers.map((member) => ({
 
-              agencyProfileId: profile.id,
+            agencyProfileId: profile.id,
 
-              companyProfileId: company.id,
+            companyProfileId: companyId,
 
-              firstName: member.firstName,
+            firstName: member.firstName,
 
-              lastName: member.lastName,
+            lastName: member.lastName,
 
-              dni: member.dni,
+            dni: member.dni,
 
-              phone: member.phone,
+            phone: member.phone,
 
-              email: member.email,
+            email: member.email,
 
-              roleInCompany: member.roleInCompany,
+            roleInCompany: member.roleInCompany,
 
-            })),
+          })),
 
-          });
-
-        }
+        });
 
       }
 
@@ -417,6 +534,29 @@ export class ProfessionalsService {
   async verify(id: string) {
 
     const profile = await this.findOne(id);
+
+    if (profile.status !== 'PENDING' || !profile.ambassadorRequestedAt) {
+      throw new BadRequestException('Solo se pueden aprobar solicitudes pendientes');
+    }
+
+    const requiredDocs = profile.personType === 'COMPANY'
+      ? [AmbassadorDocumentType.CUIT_CERTIFICATE, AmbassadorDocumentType.FOUNDING_DOCUMENT]
+      : [
+          AmbassadorDocumentType.DNI_FRONT,
+          AmbassadorDocumentType.DNI_BACK,
+          AmbassadorDocumentType.SELFIE,
+        ];
+
+    const presentDocs = new Set(profile.ambassadorDocuments?.map((d) => d.documentType) ?? []);
+    for (const docType of requiredDocs) {
+      if (!presentDocs.has(docType)) {
+        throw new BadRequestException(`Falta documentación requerida: ${docType}`);
+      }
+    }
+
+    if (profile.personType === 'COMPANY' && (profile.agencyTeamMembers?.length ?? 0) < 1) {
+      throw new BadRequestException('La agencia debe tener al menos un miembro de equipo');
+    }
 
 
 
@@ -446,6 +586,12 @@ export class ProfessionalsService {
 
     ]);
 
+    await this.ambassadorAccess.grantAmbassadorRolesForLinkedTeamMembers(id);
+
+    if (profile.personType === 'COMPANY') {
+      await this.agencyTeamService.inviteAllPendingMembers(id);
+    }
+
 
 
     return { message: 'Ambassador approved' };
@@ -456,15 +602,38 @@ export class ProfessionalsService {
 
   async reject(id: string) {
 
-    await this.findOne(id);
+    const profile = await this.findOne(id);
 
-    return this.prisma.professionalProfile.update({
+    if (profile.status !== 'PENDING') {
+      throw new BadRequestException('Solo se pueden rechazar solicitudes pendientes');
+    }
 
-      where: { id },
+    await this.ambassadorAccess.revokeAgencyAccess(id, profile.userId);
 
-      data: { status: 'REJECTED', ambassadorRequestedAt: null },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.agencyTeamMember.deleteMany({ where: { agencyProfileId: id } });
+      await tx.userCompanyMembership.deleteMany({ where: { professionalProfileId: id } });
 
+      const ownerMembership = profile.companyMemberships?.find((m) => m.role === 'OWNER');
+      if (ownerMembership?.companyProfileId) {
+        const otherMembers = await tx.userCompanyMembership.count({
+          where: {
+            companyProfileId: ownerMembership.companyProfileId,
+            professionalProfileId: { not: id },
+          },
+        });
+        if (otherMembers === 0) {
+          await tx.companyProfile.delete({ where: { id: ownerMembership.companyProfileId } });
+        }
+      }
+
+      await tx.professionalProfile.update({
+        where: { id },
+        data: { status: 'REJECTED', ambassadorRequestedAt: null, isVerified: false, verifiedAt: null },
+      });
     });
+
+    return { message: 'Ambassador rejected' };
 
   }
 
@@ -472,9 +641,18 @@ export class ProfessionalsService {
 
   async suspend(id: string) {
 
-    await this.findOne(id);
+    const profile = await this.findOne(id);
 
-    return this.prisma.professionalProfile.update({ where: { id }, data: { status: 'SUSPENDED' } });
+    if (profile.status !== 'ACTIVE') {
+      throw new BadRequestException('Solo se pueden suspender embajadores activos');
+    }
+
+    await this.ambassadorAccess.revokeAgencyAccess(id, profile.userId);
+
+    return this.prisma.professionalProfile.update({
+      where: { id },
+      data: { status: 'SUSPENDED', ambassadorRequestedAt: null, isVerified: false },
+    });
 
   }
 

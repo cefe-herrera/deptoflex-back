@@ -12,6 +12,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
+import { AmbassadorAccessService } from '../../common/services/ambassador-access.service';
 import {
   CreateReservationSessionDto,
   ReservationSessionModeDto,
@@ -38,6 +39,7 @@ export class AmbassadorsService {
     private readonly prisma: PrismaService,
     private readonly commissionRates: CommissionRatesService,
     private readonly config: ConfigService,
+    private readonly ambassadorAccess: AmbassadorAccessService,
   ) {}
 
   /**
@@ -45,15 +47,7 @@ export class AmbassadorsService {
    * y trackingToken; el embajador autenticado queda asociado como dueño real.
    */
   async createSession(userId: string, dto: CreateReservationSessionDto) {
-    const profile = await this.prisma.professionalProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    });
-    if (!profile) {
-      throw new ForbiddenException(
-        'Necesitás un perfil profesional/embajador para iniciar una reserva',
-      );
-    }
+    const { profileId } = await this.ambassadorAccess.assertCanOperateAsAmbassador(userId);
 
     const mode = this.resolveSessionMode(dto.mode);
     const sessionId = dto.sessionId ?? randomUUID();
@@ -73,7 +67,7 @@ export class AmbassadorsService {
 
     if (bookingSlug) {
       cloudbedsUrl = this.buildCloudbedsUrl({
-        ambassadorId: profile.id,
+        ambassadorId: profileId,
         sessionId,
         trackingToken,
         mode,
@@ -87,7 +81,7 @@ export class AmbassadorsService {
         sessionId,
         trackingToken,
         mode,
-        ambassadorId: profile.id,
+        ambassadorId: profileId,
         guestReturnUrl,
       });
     } else {
@@ -102,7 +96,7 @@ export class AmbassadorsService {
         where: { id: sessionId },
         create: {
           id: sessionId,
-          professionalProfileId: profile.id,
+          professionalProfileId: profileId,
           mode,
           trackingTokenHash,
           cloudbedsUrl,
@@ -134,7 +128,7 @@ export class AmbassadorsService {
     }
 
     this.logger.log(
-      `[Ambassador] sesión creada session_id=${session.id} ambassador=${profile.id} mode=${mode} status=${session.status}`,
+      `[Ambassador] sesión creada session_id=${session.id} ambassador=${profileId} mode=${mode} status=${session.status}`,
     );
 
     return {

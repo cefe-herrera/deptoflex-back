@@ -12,6 +12,7 @@ import { QueryFlexBookingDto } from './dto/query-flex-booking.dto';
 import { BookingSource, BookingStatus, CommissionStatus, FlexBookingStatus, FlexPricingPlanCode } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { FlexBookingPaymentsService } from '../payments/flex-booking-payments.service';
+import { AmbassadorAccessService } from '../../common/services/ambassador-access.service';
 
 const FLEX_TO_BOOKING_STATUS: Record<string, BookingStatus> = {
   PENDING: BookingStatus.PENDING,
@@ -34,6 +35,7 @@ export class FlexBookingsService {
     private bookingsService: BookingsService,
     @Inject(forwardRef(() => FlexBookingPaymentsService))
     private flexBookingPayments: FlexBookingPaymentsService,
+    private ambassadorAccess: AmbassadorAccessService,
   ) {}
 
   async create(dto: CreateFlexBookingDto, user?: CurrentUserPayload) {
@@ -80,14 +82,8 @@ export class FlexBookingsService {
 
     if (!isStaff) {
       if (!user) throw new ForbiddenException('Authentication required');
-      const profile = await this.prisma.professionalProfile.findUnique({
-        where: { userId: user.id },
-        select: { id: true },
-      });
-      if (!profile) {
-        throw new ForbiddenException('Necesitás un perfil profesional para crear reservas flex');
-      }
-      professionalProfileId = profile.id;
+      const { profileId } = await this.ambassadorAccess.assertCanOperateAsAmbassador(user.id);
+      professionalProfileId = profileId;
     }
 
     // A flex reservation is fully managed in-app: we create the FlexBooking

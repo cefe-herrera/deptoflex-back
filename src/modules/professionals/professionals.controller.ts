@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Post, Body, Param, ParseUUIDPipe, Query, HttpCode, HttpStatus,
+  Controller, Get, Patch, Post, Delete, Body, Param, ParseUUIDPipe, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ProfessionalsService } from './professionals.service';
 import { AgencyTeamService } from './agency-team.service';
@@ -105,6 +105,20 @@ export class ProfessionalsController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
   ) {
     return this.agencyTeamService.resendInvitation(user.id, memberId);
+  }
+
+  @Delete('me/agency-team/:memberId')
+  @Roles('AMBASSADOR')
+  @ApiOperation({
+    summary: 'Eliminar invitación pendiente',
+    description: 'Elimina un miembro que aún no se registró. Solo titular de agencia.',
+  })
+  @ApiParam({ name: 'memberId', type: String, format: 'uuid' })
+  removeAgencyTeamMember(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ) {
+    return this.agencyTeamService.removeTeamMember(user.id, memberId);
   }
 
   @Get()
