@@ -1,10 +1,12 @@
 import {
-  Controller, Get, Patch, Post, Delete, Body, Param, ParseUUIDPipe, Query, HttpCode, HttpStatus,
+  Controller, Get, Patch, Post, Delete, Body, Param, ParseUUIDPipe, ParseEnumPipe, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
+import { AmbassadorDocumentType } from '@prisma/client';
 import { ProfessionalsService } from './professionals.service';
 import { AgencyTeamService } from './agency-team.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
+import { ConfirmAmbassadorDocumentDto } from './dto/confirm-ambassador-document.dto';
 import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -178,6 +180,20 @@ export class ProfessionalsController {
     );
   }
 
+  @Post('me/ambassador-documents/:documentType/confirm')
+  @ApiOperation({
+    summary: 'Confirmar un documento de embajador',
+    description: 'Confirma que un documento puntual (frente/dorso DNI, selfie, CUIT, constitutivo) ya se subió a storage y lo asocia al perfil. Se llama apenas se toma cada foto, sin esperar al envío final de la solicitud.',
+  })
+  @ApiParam({ name: 'documentType', enum: AmbassadorDocumentType })
+  confirmAmbassadorDocument(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('documentType', new ParseEnumPipe(AmbassadorDocumentType)) documentType: AmbassadorDocumentType,
+    @Body() dto: ConfirmAmbassadorDocumentDto,
+  ) {
+    return this.professionalsService.confirmAmbassadorDocument(user.id, documentType, dto.mediaFileId);
+  }
+
   @Post('me/avatar/presign')
   @ApiOperation({
     summary: 'Presign de subida de mi avatar',
@@ -233,8 +249,8 @@ export class ProfessionalsController {
     description: 'Marca al profesional como verificado, habilitándolo para operar. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  verify(@Param('id', ParseUUIDPipe) id: string) {
-    return this.professionalsService.verify(id);
+  verify(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.verify(id, user.id);
   }
 
   @Post(':id/reject')
@@ -244,8 +260,8 @@ export class ProfessionalsController {
     description: 'Rechaza la solicitud de verificación del profesional. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  reject(@Param('id', ParseUUIDPipe) id: string) {
-    return this.professionalsService.reject(id);
+  reject(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.reject(id, user.id);
   }
 
   @Post(':id/suspend')
@@ -255,7 +271,18 @@ export class ProfessionalsController {
     description: 'Suspende al profesional impidiéndole operar hasta nueva orden. Solo ADMIN.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  suspend(@Param('id', ParseUUIDPipe) id: string) {
-    return this.professionalsService.suspend(id);
+  suspend(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.suspend(id, user.id);
+  }
+
+  @Get(':id/activity')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Actividad y trazabilidad de un profesional',
+    description: 'Línea de tiempo de eventos (subidas, fallos, aprobación, rechazo, suspensión) más archivos subidos a storage que nunca se confirmaron como documento. Pensado para entender por qué falló una solicitud de embajador. Solo ADMIN/OPERATOR.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  getActivity(@Param('id', ParseUUIDPipe) id: string) {
+    return this.professionalsService.getActivity(id);
   }
 }

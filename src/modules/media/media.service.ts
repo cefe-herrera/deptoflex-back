@@ -164,6 +164,39 @@ export class MediaService {
     await this.resolveMediaFileForUser(mediaFileId, uploadedById);
   }
 
+  /**
+   * Archivos que el usuario alcanzó a "presignar" (y quizás subir a storage)
+   * para su solicitud de embajador, pero que nunca se confirmaron como
+   * AmbassadorDocument. Es la pista de un envío que quedó a mitad de camino:
+   * el usuario tocó el botón, tal vez la foto llegó al storage, pero algo
+   * falló antes de guardarse como documento oficial.
+   */
+  async findOrphanAmbassadorUploads(profileId: string, uploadedById: string) {
+    const pending = await this.prisma.mediaFile.findMany({
+      where: {
+        uploadedById,
+        status: MediaStatus.PENDING,
+        objectKey: { startsWith: `professionals/${profileId}/` },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, originalName: true, sizeBytes: true, createdAt: true, objectKey: true },
+    });
+
+    if (pending.length === 0) return [];
+
+    const existsInStorage = await Promise.all(
+      pending.map((f) => this.r2.objectExists(f.objectKey)),
+    );
+
+    return pending.map((f, i) => ({
+      mediaFileId: f.id,
+      filename: f.originalName,
+      sizeBytes: f.sizeBytes,
+      createdAt: f.createdAt,
+      uploadedToStorage: existsInStorage[i],
+    }));
+  }
+
   async attachAmbassadorDocuments(
     profileId: string,
     uploadedById: string,

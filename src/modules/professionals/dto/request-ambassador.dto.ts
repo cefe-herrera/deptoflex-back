@@ -125,28 +125,33 @@ export class RequestAmbassadorDto {
 
   // ── Documentación ──────────────────────────────────────────────────────────
 
+  // Los mediaFileId de documentación son opcionales: lo normal es que ya
+  // hayan sido confirmados antes, uno por uno, vía
+  // POST /professionals/me/ambassador-documents/:documentType/confirm.
+  // Se aceptan igual acá por compatibilidad con clientes viejos del wizard.
+
   @ApiPropertyOptional({ description: 'MediaFileId del frente del DNI (individuo)' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.INDIVIDUAL)
+  @IsOptional()
   @IsUUID()
   dniFrontMediaFileId?: string;
 
   @ApiPropertyOptional({ description: 'MediaFileId del dorso del DNI (individuo)' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.INDIVIDUAL)
+  @IsOptional()
   @IsUUID()
   dniBackMediaFileId?: string;
 
   @ApiPropertyOptional({ description: 'MediaFileId de la selfie (individuo)' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.INDIVIDUAL)
+  @IsOptional()
   @IsUUID()
   selfieMediaFileId?: string;
 
   @ApiPropertyOptional({ description: 'MediaFileId de la constancia de CUIT (agencia)' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.COMPANY)
+  @IsOptional()
   @IsUUID()
   cuitCertificateMediaFileId?: string;
 
   @ApiPropertyOptional({ description: 'MediaFileId de la 1ra hoja del documento constitutivo (agencia)' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.COMPANY)
+  @IsOptional()
   @IsUUID()
   foundingDocMediaFileId?: string;
 

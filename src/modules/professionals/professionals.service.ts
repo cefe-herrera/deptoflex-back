@@ -10,6 +10,10 @@ import { MediaService } from '../media/media.service';
 
 import { AmbassadorAccessService } from '../../common/services/ambassador-access.service';
 
+import { AuditService } from '../../common/services/audit.service';
+
+import { AMBASSADOR_AUDIT_ACTIONS } from '../../common/services/ambassador-audit-actions';
+
 import { AgencyTeamService } from './agency-team.service';
 
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
@@ -35,6 +39,8 @@ export class ProfessionalsService {
     private ambassadorAccess: AmbassadorAccessService,
 
     private agencyTeamService: AgencyTeamService,
+
+    private audit: AuditService,
 
   ) {}
 
@@ -163,7 +169,11 @@ export class ProfessionalsService {
 
       where: { userId },
 
-      include: { user: { select: { email: true } }, companyMemberships: { include: { companyProfile: true } } },
+      include: {
+        user: { select: { email: true } },
+        companyMemberships: { include: { companyProfile: true } },
+        ambassadorDocuments: { select: { documentType: true, createdAt: true } },
+      },
 
     });
 
@@ -171,6 +181,56 @@ export class ProfessionalsService {
 
     return profile;
 
+  }
+
+
+
+  /**
+   * Confirma UN documento de embajador apenas el usuario lo sube, en vez de
+   * esperar al envío final de toda la solicitud. Así, si falla la subida de
+   * otro documento más adelante, este ya queda guardado y no hay que
+   * repetirlo. Cada intento (éxito o fallo) queda en el audit log.
+   */
+  async confirmAmbassadorDocument(
+    userId: string,
+    documentType: AmbassadorDocumentType,
+    mediaFileId: string,
+  ) {
+    const profile = await this.prisma.professionalProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    if (profile.status === 'ACTIVE') {
+      throw new ConflictException('Already an active ambassador');
+    }
+
+    try {
+      await this.mediaService.attachAmbassadorDocuments(profile.id, userId, [
+        { mediaFileId, documentType },
+      ]);
+    } catch (err) {
+      await this.audit.log({
+        actorId: userId,
+        entityType: 'ProfessionalProfile',
+        entityId: profile.id,
+        action: AMBASSADOR_AUDIT_ACTIONS.DOCUMENT_UPLOAD_FAILED,
+        metadata: {
+          documentType,
+          mediaFileId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+      throw err;
+    }
+
+    await this.audit.log({
+      actorId: userId,
+      entityType: 'ProfessionalProfile',
+      entityId: profile.id,
+      action: AMBASSADOR_AUDIT_ACTIONS.DOCUMENT_UPLOAD_CONFIRMED,
+      metadata: { documentType, mediaFileId },
+    });
+
+    return { confirmed: true, documentType };
   }
 
 
@@ -285,30 +345,74 @@ export class ProfessionalsService {
       await this.assertTeamEmailsAvailable(teamMembers!, profile.id);
     }
 
-    const docPayload = isCompany
+    const requiredDocTypes = isCompany
+      ? [AmbassadorDocumentType.CUIT_CERTIFICATE, AmbassadorDocumentType.FOUNDING_DOCUMENT]
+      : [AmbassadorDocumentType.DNI_FRONT, AmbassadorDocumentType.DNI_BACK, AmbassadorDocumentType.SELFIE];
 
+    // Documentos que el cliente pueda seguir mandando en este mismo request
+    // (compatibilidad con versiones viejas del wizard). Lo normal hoy es que
+    // ya hayan sido confirmados antes, uno por uno, vía
+    // POST /professionals/me/ambassador-documents/:documentType/confirm.
+    const providedDocs = isCompany
       ? [
-
-          { mediaFileId: dto.cuitCertificateMediaFileId!, documentType: AmbassadorDocumentType.CUIT_CERTIFICATE },
-
-          { mediaFileId: dto.foundingDocMediaFileId!, documentType: AmbassadorDocumentType.FOUNDING_DOCUMENT },
-
+          dto.cuitCertificateMediaFileId
+            ? { mediaFileId: dto.cuitCertificateMediaFileId, documentType: AmbassadorDocumentType.CUIT_CERTIFICATE }
+            : null,
+          dto.foundingDocMediaFileId
+            ? { mediaFileId: dto.foundingDocMediaFileId, documentType: AmbassadorDocumentType.FOUNDING_DOCUMENT }
+            : null,
         ]
-
       : [
-
-          { mediaFileId: dto.dniFrontMediaFileId!, documentType: AmbassadorDocumentType.DNI_FRONT },
-
-          { mediaFileId: dto.dniBackMediaFileId!, documentType: AmbassadorDocumentType.DNI_BACK },
-
-          { mediaFileId: dto.selfieMediaFileId!, documentType: AmbassadorDocumentType.SELFIE },
-
+          dto.dniFrontMediaFileId
+            ? { mediaFileId: dto.dniFrontMediaFileId, documentType: AmbassadorDocumentType.DNI_FRONT }
+            : null,
+          dto.dniBackMediaFileId
+            ? { mediaFileId: dto.dniBackMediaFileId, documentType: AmbassadorDocumentType.DNI_BACK }
+            : null,
+          dto.selfieMediaFileId
+            ? { mediaFileId: dto.selfieMediaFileId, documentType: AmbassadorDocumentType.SELFIE }
+            : null,
         ];
 
-    for (const doc of docPayload) {
+    for (const doc of providedDocs) {
+      if (!doc) continue;
+      try {
+        await this.mediaService.attachAmbassadorDocuments(profile.id, userId, [doc]);
+      } catch (err) {
+        await this.audit.log({
+          actorId: userId,
+          entityType: 'ProfessionalProfile',
+          entityId: profile.id,
+          action: AMBASSADOR_AUDIT_ACTIONS.DOCUMENT_UPLOAD_FAILED,
+          metadata: {
+            documentType: doc.documentType,
+            mediaFileId: doc.mediaFileId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
+        // No aborta acá: seguimos intentando el resto y recién al final
+        // reportamos, con precisión, qué documentos faltan de verdad.
+      }
+    }
 
-      await this.mediaService.ensureUploaded(doc.mediaFileId, userId);
+    const attachedDocs = await this.prisma.ambassadorDocument.findMany({
+      where: { professionalProfileId: profile.id },
+      select: { documentType: true },
+    });
+    const attachedTypes = new Set(attachedDocs.map((d) => d.documentType));
+    const missingDocTypes = requiredDocTypes.filter((t) => !attachedTypes.has(t));
 
+    if (missingDocTypes.length > 0) {
+      await this.audit.log({
+        actorId: userId,
+        entityType: 'ProfessionalProfile',
+        entityId: profile.id,
+        action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_FAILED,
+        metadata: { reason: 'missing_documents', missingDocTypes },
+      });
+      throw new BadRequestException(
+        `Falta subir o confirmar: ${missingDocTypes.join(', ')}. Volvé a intentarlo desde la app.`,
+      );
     }
 
     const profileData = isCompany
@@ -396,49 +500,9 @@ export class ProfessionalsService {
       throw new ConflictException('Ambassador request already submitted');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
 
       const updatedProfile = await tx.professionalProfile.findUniqueOrThrow({ where: { userId } });
-
-      for (const doc of docPayload) {
-
-        await tx.mediaFile.update({
-
-          where: { id: doc.mediaFileId },
-
-          data: { status: 'CONFIRMED', confirmedAt: new Date() },
-
-        });
-
-        await tx.ambassadorDocument.upsert({
-
-          where: {
-
-            professionalProfileId_documentType: {
-
-              professionalProfileId: profile.id,
-
-              documentType: doc.documentType,
-
-            },
-
-          },
-
-          create: {
-
-            professionalProfileId: profile.id,
-
-            mediaFileId: doc.mediaFileId,
-
-            documentType: doc.documentType,
-
-          },
-
-          update: { mediaFileId: doc.mediaFileId },
-
-        });
-
-      }
 
       if (isCompany && teamMembers) {
 
@@ -527,11 +591,21 @@ export class ProfessionalsService {
 
     });
 
+    await this.audit.log({
+      actorId: userId,
+      entityType: 'ProfessionalProfile',
+      entityId: profile.id,
+      action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_SUBMITTED,
+      metadata: { personType: dto.personType },
+    });
+
+    return result;
+
   }
 
 
 
-  async verify(id: string) {
+  async verify(id: string, actorId?: string) {
 
     const profile = await this.findOne(id);
 
@@ -592,7 +666,13 @@ export class ProfessionalsService {
       await this.agencyTeamService.inviteAllPendingMembers(id);
     }
 
-
+    await this.audit.log({
+      actorId: actorId ?? null,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_APPROVED,
+      metadata: {},
+    });
 
     return { message: 'Ambassador approved' };
 
@@ -600,7 +680,7 @@ export class ProfessionalsService {
 
 
 
-  async reject(id: string) {
+  async reject(id: string, actorId?: string) {
 
     const profile = await this.findOne(id);
 
@@ -633,13 +713,21 @@ export class ProfessionalsService {
       });
     });
 
+    await this.audit.log({
+      actorId: actorId ?? null,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_REJECTED,
+      metadata: {},
+    });
+
     return { message: 'Ambassador rejected' };
 
   }
 
 
 
-  async suspend(id: string) {
+  async suspend(id: string, actorId?: string) {
 
     const profile = await this.findOne(id);
 
@@ -649,11 +737,53 @@ export class ProfessionalsService {
 
     await this.ambassadorAccess.revokeAgencyAccess(id, profile.userId);
 
-    return this.prisma.professionalProfile.update({
+    const suspended = await this.prisma.professionalProfile.update({
       where: { id },
       data: { status: 'SUSPENDED', ambassadorRequestedAt: null, isVerified: false },
     });
 
+    await this.audit.log({
+      actorId: actorId ?? null,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_SUSPENDED,
+      metadata: {},
+    });
+
+    return suspended;
+
+  }
+
+  /**
+   * Reconstruye, para el admin, qué pasó con una solicitud de embajador:
+   * la línea de tiempo de audit logs (subidas, fallos, aprobación, etc.) +
+   * los archivos que el usuario llegó a subir a storage pero que nunca se
+   * confirmaron como documento (pista de un envío fallido a mitad de camino).
+   */
+  async getActivity(id: string) {
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { id },
+      select: { id: true, userId: true },
+    });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    const [events, orphanFiles] = await Promise.all([
+      this.audit.findForEntity('ProfessionalProfile', id),
+      this.mediaService.findOrphanAmbassadorUploads(profile.id, profile.userId),
+    ]);
+
+    return {
+      events: events.map((e) => ({
+        id: e.id,
+        action: e.action,
+        metadata: e.metadata,
+        createdAt: e.createdAt,
+        actor: e.user
+          ? { id: e.user.id, email: e.user.email, name: `${e.user.firstName} ${e.user.lastName}`.trim() }
+          : null,
+      })),
+      orphanFiles,
+    };
   }
 
 }
