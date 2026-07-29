@@ -1,14 +1,20 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AmbassadorDocumentType,
   BookingStatus,
   CommissionSettlementStatus,
   CommissionStatus,
+  PersonType,
   Prisma,
 } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { MarkSettlementPaidDto } from './dto/mark-settlement-paid.dto';
+import {
+  getMissingAmbassadorDocTypes,
+  isAmbassadorDocumentationComplete,
+} from '../professionals/ambassador-documents.util';
 
 const ELIGIBLE_BOOKING_STATUSES: BookingStatus[] = [
   BookingStatus.CONFIRMED,
@@ -61,6 +67,48 @@ export class CommissionSettlementsService {
         deletedAt: null,
         status: { in: ELIGIBLE_BOOKING_STATUSES },
       },
+    };
+  }
+
+  private async assertDocumentationCompleteForProfiles(profileIds: string[]): Promise<void> {
+    if (profileIds.length === 0) return;
+
+    const profiles = await this.prisma.professionalProfile.findMany({
+      where: { id: { in: profileIds } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        personType: true,
+        ambassadorDocuments: { select: { documentType: true } },
+      },
+    });
+
+    const incomplete = profiles
+      .filter((profile) =>
+        !isAmbassadorDocumentationComplete(
+          profile.personType ?? PersonType.INDIVIDUAL,
+          profile.ambassadorDocuments.map((doc) => doc.documentType),
+        ),
+      )
+      .map((profile) => `${profile.firstName} ${profile.lastName}`.trim());
+
+    if (incomplete.length > 0) {
+      throw new BadRequestException(
+        `Documentación incompleta para liquidar: ${incomplete.join(', ')}. El embajador debe completar su documentación antes de liquidar.`,
+      );
+    }
+  }
+
+  private documentationStatus(
+    personType: PersonType | null,
+    documentTypes: AmbassadorDocumentType[],
+  ) {
+    const resolvedPersonType = personType ?? PersonType.INDIVIDUAL;
+    const missingDocTypes = getMissingAmbassadorDocTypes(resolvedPersonType, documentTypes);
+    return {
+      documentationComplete: missingDocTypes.length === 0,
+      missingDocTypes,
     };
   }
 
@@ -132,10 +180,12 @@ export class CommissionSettlementsService {
             id: true,
             firstName: true,
             lastName: true,
+            personType: true,
             bankCbuCvu: true,
             bankAlias: true,
             bankAccountHolder: true,
             bankName: true,
+            ambassadorDocuments: { select: { documentType: true } },
             user: { select: { email: true } },
           },
         },
@@ -156,6 +206,8 @@ export class CommissionSettlementsService {
           accountHolder: string | null;
           bankName: string | null;
         };
+        documentationComplete: boolean;
+        missingDocTypes: AmbassadorDocumentType[];
       };
       totalAmount: Decimal;
       currency: string;
@@ -167,6 +219,10 @@ export class CommissionSettlementsService {
       const profileId = c.professionalProfile.id;
       let group = byAmbassador.get(profileId);
       if (!group) {
+        const docStatus = this.documentationStatus(
+          c.professionalProfile.personType,
+          c.professionalProfile.ambassadorDocuments.map((doc) => doc.documentType),
+        );
         group = {
           ambassador: {
             id: c.professionalProfile.id,
@@ -179,6 +235,8 @@ export class CommissionSettlementsService {
               accountHolder: c.professionalProfile.bankAccountHolder,
               bankName: c.professionalProfile.bankName,
             },
+            documentationComplete: docStatus.documentationComplete,
+            missingDocTypes: docStatus.missingDocTypes,
           },
           totalAmount: new Decimal(0),
           currency: c.currency,
@@ -270,6 +328,11 @@ export class CommissionSettlementsService {
     if (filtered.length === 0) {
       throw new BadRequestException('No eligible commissions found for settlement');
     }
+
+    const profileIds = [...new Set(
+      filtered.map((commission) => commission.professionalProfileId).filter(Boolean) as string[],
+    )];
+    await this.assertDocumentationCompleteForProfiles(profileIds);
 
     const byProfile = new Map<string, typeof filtered>();
     for (const c of filtered) {
@@ -400,6 +463,8 @@ export class CommissionSettlementsService {
     if (settlement.status !== CommissionSettlementStatus.DRAFT) {
       throw new BadRequestException('Only draft settlements can be marked as paid');
     }
+
+    await this.assertDocumentationCompleteForProfiles([settlement.professionalProfileId]);
 
     const paidAt = dto.paidAt ? new Date(dto.paidAt) : new Date();
     const commissionIds = settlement.commissions.map((c) => c.id);

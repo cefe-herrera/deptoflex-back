@@ -21,6 +21,10 @@ import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 
 import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
+import {
+  getMissingAmbassadorDocTypes,
+  isAmbassadorDocumentationComplete,
+} from './ambassador-documents.util';
 
 
 
@@ -45,13 +49,9 @@ export class ProfessionalsService {
   ) {}
 
   private normalizeTeamMembers(
-    members: AgencyTeamMemberDto[] | undefined,
+    members: AgencyTeamMemberDto[],
     ownerEmail: string,
   ): AgencyTeamMemberDto[] {
-    if (!members?.length) {
-      throw new BadRequestException('Debés indicar al menos un miembro del equipo');
-    }
-
     const owner = ownerEmail.trim().toLowerCase();
     const seen = new Set<string>();
     const normalized: AgencyTeamMemberDto[] = [];
@@ -200,7 +200,13 @@ export class ProfessionalsService {
     if (!profile) throw new NotFoundException('Professional profile not found');
 
     if (profile.status === 'ACTIVE') {
-      throw new ConflictException('Already an active ambassador');
+      const attachedDocs = await this.prisma.ambassadorDocument.findMany({
+        where: { professionalProfileId: profile.id },
+        select: { documentType: true },
+      });
+      if (isAmbassadorDocumentationComplete(profile.personType, attachedDocs.map((d) => d.documentType))) {
+        throw new ConflictException('Already an active ambassador');
+      }
     }
 
     try {
@@ -337,17 +343,13 @@ export class ProfessionalsService {
 
     const isCompany = dto.personType === 'COMPANY';
 
-    const teamMembers = isCompany
+    const teamMembers = isCompany && dto.teamMembers?.length
       ? this.normalizeTeamMembers(dto.teamMembers, contactEmail)
       : undefined;
 
-    if (isCompany) {
-      await this.assertTeamEmailsAvailable(teamMembers!, profile.id);
+    if (isCompany && teamMembers?.length) {
+      await this.assertTeamEmailsAvailable(teamMembers, profile.id);
     }
-
-    const requiredDocTypes = isCompany
-      ? [AmbassadorDocumentType.CUIT_CERTIFICATE, AmbassadorDocumentType.FOUNDING_DOCUMENT]
-      : [AmbassadorDocumentType.DNI_FRONT, AmbassadorDocumentType.DNI_BACK, AmbassadorDocumentType.SELFIE];
 
     // Documentos que el cliente pueda seguir mandando en este mismo request
     // (compatibilidad con versiones viejas del wizard). Lo normal hoy es que
@@ -399,21 +401,10 @@ export class ProfessionalsService {
       where: { professionalProfileId: profile.id },
       select: { documentType: true },
     });
-    const attachedTypes = new Set(attachedDocs.map((d) => d.documentType));
-    const missingDocTypes = requiredDocTypes.filter((t) => !attachedTypes.has(t));
-
-    if (missingDocTypes.length > 0) {
-      await this.audit.log({
-        actorId: userId,
-        entityType: 'ProfessionalProfile',
-        entityId: profile.id,
-        action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_FAILED,
-        metadata: { reason: 'missing_documents', missingDocTypes },
-      });
-      throw new BadRequestException(
-        `Falta subir o confirmar: ${missingDocTypes.join(', ')}. Volvé a intentarlo desde la app.`,
-      );
-    }
+    const missingDocTypes = getMissingAmbassadorDocTypes(
+      isCompany ? 'COMPANY' : 'INDIVIDUAL',
+      attachedDocs.map((d) => d.documentType),
+    );
 
     const profileData = isCompany
 
@@ -445,7 +436,11 @@ export class ProfessionalsService {
 
           ambassadorRequestedAt: new Date(),
 
-          status: 'PENDING' as const,
+          status: 'ACTIVE' as const,
+
+          isVerified: true,
+
+          verifiedAt: new Date(),
 
         }
 
@@ -477,7 +472,11 @@ export class ProfessionalsService {
 
           ambassadorRequestedAt: new Date(),
 
-          status: 'PENDING' as const,
+          status: 'ACTIVE' as const,
+
+          isVerified: true,
+
+          verifiedAt: new Date(),
 
         };
 
@@ -504,7 +503,7 @@ export class ProfessionalsService {
 
       const updatedProfile = await tx.professionalProfile.findUniqueOrThrow({ where: { userId } });
 
-      if (isCompany && teamMembers) {
+      if (isCompany) {
 
         let companyId = profile.companyMemberships.find((m) => m.role === 'OWNER')?.companyProfileId ?? null;
 
@@ -559,31 +558,33 @@ export class ProfessionalsService {
           update: { role: 'OWNER' },
         });
 
-        await tx.agencyTeamMember.deleteMany({ where: { agencyProfileId: profile.id } });
+        if (teamMembers?.length) {
+          await tx.agencyTeamMember.deleteMany({ where: { agencyProfileId: profile.id } });
 
-        await tx.agencyTeamMember.createMany({
+          await tx.agencyTeamMember.createMany({
 
-          data: teamMembers.map((member) => ({
+            data: teamMembers.map((member) => ({
 
-            agencyProfileId: profile.id,
+              agencyProfileId: profile.id,
 
-            companyProfileId: companyId,
+              companyProfileId: companyId,
 
-            firstName: member.firstName,
+              firstName: member.firstName,
 
-            lastName: member.lastName,
+              lastName: member.lastName,
 
-            dni: member.dni,
+              dni: member.dni,
 
-            phone: member.phone,
+              phone: member.phone,
 
-            email: member.email,
+              email: member.email,
 
-            roleInCompany: member.roleInCompany,
+              roleInCompany: member.roleInCompany,
 
-          })),
+            })),
 
-        });
+          });
+        }
 
       }
 
@@ -591,16 +592,45 @@ export class ProfessionalsService {
 
     });
 
+    await this.grantAmbassadorAccess(profile.id, userId, dto.personType);
+
     await this.audit.log({
       actorId: userId,
       entityType: 'ProfessionalProfile',
       entityId: profile.id,
       action: AMBASSADOR_AUDIT_ACTIONS.REQUEST_SUBMITTED,
-      metadata: { personType: dto.personType },
+      metadata: {
+        personType: dto.personType,
+        autoActivated: true,
+        documentationComplete: missingDocTypes.length === 0,
+        missingDocTypes: missingDocTypes.length > 0 ? missingDocTypes : undefined,
+      },
     });
 
     return result;
 
+  }
+
+
+
+  private async grantAmbassadorAccess(
+    profileId: string,
+    ownerUserId: string,
+    personType: RequestAmbassadorDto['personType'],
+  ): Promise<void> {
+    const ambassadorRole = await this.prisma.role.findUniqueOrThrow({ where: { name: 'AMBASSADOR' } });
+
+    await this.prisma.userRole.upsert({
+      where: { userId_roleId: { userId: ownerUserId, roleId: ambassadorRole.id } },
+      create: { userId: ownerUserId, roleId: ambassadorRole.id },
+      update: {},
+    });
+
+    await this.ambassadorAccess.grantAmbassadorRolesForLinkedTeamMembers(profileId);
+
+    if (personType === 'COMPANY') {
+      await this.agencyTeamService.inviteAllPendingMembers(profileId);
+    }
   }
 
 
@@ -613,58 +643,12 @@ export class ProfessionalsService {
       throw new BadRequestException('Solo se pueden aprobar solicitudes pendientes');
     }
 
-    const requiredDocs = profile.personType === 'COMPANY'
-      ? [AmbassadorDocumentType.CUIT_CERTIFICATE, AmbassadorDocumentType.FOUNDING_DOCUMENT]
-      : [
-          AmbassadorDocumentType.DNI_FRONT,
-          AmbassadorDocumentType.DNI_BACK,
-          AmbassadorDocumentType.SELFIE,
-        ];
+    await this.prisma.professionalProfile.update({
+      where: { id },
+      data: { isVerified: true, verifiedAt: new Date(), status: 'ACTIVE' },
+    });
 
-    const presentDocs = new Set(profile.ambassadorDocuments?.map((d) => d.documentType) ?? []);
-    for (const docType of requiredDocs) {
-      if (!presentDocs.has(docType)) {
-        throw new BadRequestException(`Falta documentación requerida: ${docType}`);
-      }
-    }
-
-    if (profile.personType === 'COMPANY' && (profile.agencyTeamMembers?.length ?? 0) < 1) {
-      throw new BadRequestException('La agencia debe tener al menos un miembro de equipo');
-    }
-
-
-
-    const ambassadorRole = await this.prisma.role.findUniqueOrThrow({ where: { name: 'AMBASSADOR' } });
-
-
-
-    await this.prisma.$transaction([
-
-      this.prisma.professionalProfile.update({
-
-        where: { id },
-
-        data: { isVerified: true, verifiedAt: new Date(), status: 'ACTIVE' },
-
-      }),
-
-      this.prisma.userRole.upsert({
-
-        where: { userId_roleId: { userId: profile.userId, roleId: ambassadorRole.id } },
-
-        create: { userId: profile.userId, roleId: ambassadorRole.id },
-
-        update: {},
-
-      }),
-
-    ]);
-
-    await this.ambassadorAccess.grantAmbassadorRolesForLinkedTeamMembers(id);
-
-    if (profile.personType === 'COMPANY') {
-      await this.agencyTeamService.inviteAllPendingMembers(id);
-    }
+    await this.grantAmbassadorAccess(id, profile.userId, profile.personType ?? 'INDIVIDUAL');
 
     await this.audit.log({
       actorId: actorId ?? null,

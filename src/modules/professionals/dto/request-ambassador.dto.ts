@@ -155,8 +155,8 @@ export class RequestAmbassadorDto {
   @IsUUID()
   foundingDocMediaFileId?: string;
 
-  @ApiPropertyOptional({ type: [AgencyTeamMemberDto], description: 'Embajadores dependientes de la agencia' })
-  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.COMPANY)
+  @ApiPropertyOptional({ type: [AgencyTeamMemberDto], description: 'Embajadores dependientes de la agencia (opcional al registrar)' })
+  @ValidateIf((o: RequestAmbassadorDto) => o.personType === PersonType.COMPANY && !!o.teamMembers?.length)
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

@@ -160,7 +160,7 @@ export class ProfessionalsController {
   @Post('me/request-ambassador')
   @ApiOperation({
     summary: 'Solicitar rol de embajador',
-    description: 'El profesional envía sus datos (nombre, DNI, contacto, ubicación, tipo de persona) y solicita ser promovido a embajador. Los datos quedan persistidos en su perfil y la solicitud queda PENDING de aprobación por un ADMIN.',
+    description: 'El profesional envía sus datos iniciales y queda activo como embajador de inmediato. La documentación puede completarse después; es obligatoria para cobrar comisiones.',
   })
   requestAmbassador(@CurrentUser() user: CurrentUserPayload, @Body() dto: RequestAmbassadorDto) {
     return this.professionalsService.requestAmbassador(user.id, dto);
