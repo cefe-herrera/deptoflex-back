@@ -275,6 +275,28 @@ export class ProfessionalsController {
     return this.professionalsService.suspend(id, user.id);
   }
 
+  @Post(':id/approve-documentation')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Aprobar documentación del embajador',
+    description: 'Marca la documentación como revisada y aprobada por admin/operador.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  approveDocumentation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.approveDocumentation(id, user.id);
+  }
+
+  @Post(':id/reject-documentation')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Rechazar revisión de documentación',
+    description: 'Quita la aprobación de documentación para que el embajador vuelva a quedar pendiente de revisión.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  rejectDocumentation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.professionalsService.rejectDocumentation(id, user.id);
+  }
+
   @Get(':id/activity')
   @Roles('ADMIN', 'OPERATOR')
   @ApiOperation({

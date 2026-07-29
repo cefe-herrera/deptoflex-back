@@ -206,6 +206,7 @@ model User {
   roleAssignmentsMade           UserRole[]                   @relation("RoleAssignedBy")
   externalRequests              ExternalRequest[]
   commissionSettlementsPaid     CommissionSettlement[]       @relation("CommissionSettlementPaidBy")
+  documentationApprovals        ProfessionalProfile[]      @relation("DocumentationApprovedBy")
   agencyTeamMembership          AgencyTeamMember?
 
   @@index([email])
@@ -303,10 +304,13 @@ model ProfessionalProfile {
   bankAlias                 String?            @map("bank_alias") @db.VarChar(100)
   bankAccountHolder         String?            @map("bank_account_holder") @db.VarChar(200)
   bankName                  String?            @map("bank_name") @db.VarChar(100)
+  documentationApprovedAt   DateTime?          @map("documentation_approved_at") @db.Timestamptz
+  documentationApprovedById String?            @map("documentation_approved_by_id") @db.Uuid
   createdAt               DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt               DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
   user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentationApprovedBy User?              @relation("DocumentationApprovedBy", fields: [documentationApprovedById], references: [id], onDelete: SetNull)
   companyMemberships UserCompanyMembership[]
   ambassadorDocuments AmbassadorDocument[]
   agencyTeamMembers   AgencyTeamMember[]     @relation("AgencyTeamMembers")

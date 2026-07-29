@@ -80,6 +80,7 @@ export class CommissionSettlementsService {
         firstName: true,
         lastName: true,
         personType: true,
+        documentationApprovedAt: true,
         ambassadorDocuments: { select: { documentType: true } },
       },
     });
@@ -98,17 +99,36 @@ export class CommissionSettlementsService {
         `Documentación incompleta para liquidar: ${incomplete.join(', ')}. El embajador debe completar su documentación antes de liquidar.`,
       );
     }
+
+    const unapproved = profiles
+      .filter((profile) =>
+        isAmbassadorDocumentationComplete(
+          profile.personType ?? PersonType.INDIVIDUAL,
+          profile.ambassadorDocuments.map((doc) => doc.documentType),
+        ) && !profile.documentationApprovedAt,
+      )
+      .map((profile) => `${profile.firstName} ${profile.lastName}`.trim());
+
+    if (unapproved.length > 0) {
+      throw new BadRequestException(
+        `Documentación pendiente de revisión admin: ${unapproved.join(', ')}. Aprobá la documentación antes de liquidar.`,
+      );
+    }
   }
 
   private documentationStatus(
     personType: PersonType | null,
     documentTypes: AmbassadorDocumentType[],
+    documentationApprovedAt?: Date | null,
   ) {
     const resolvedPersonType = personType ?? PersonType.INDIVIDUAL;
     const missingDocTypes = getMissingAmbassadorDocTypes(resolvedPersonType, documentTypes);
+    const documentationComplete = missingDocTypes.length === 0;
     return {
-      documentationComplete: missingDocTypes.length === 0,
+      documentationComplete,
       missingDocTypes,
+      documentationApproved: documentationComplete && !!documentationApprovedAt,
+      documentationPendingReview: documentationComplete && !documentationApprovedAt,
     };
   }
 
@@ -185,6 +205,7 @@ export class CommissionSettlementsService {
             bankAlias: true,
             bankAccountHolder: true,
             bankName: true,
+            documentationApprovedAt: true,
             ambassadorDocuments: { select: { documentType: true } },
             user: { select: { email: true } },
           },
@@ -207,6 +228,8 @@ export class CommissionSettlementsService {
           bankName: string | null;
         };
         documentationComplete: boolean;
+        documentationApproved: boolean;
+        documentationPendingReview: boolean;
         missingDocTypes: AmbassadorDocumentType[];
       };
       totalAmount: Decimal;
@@ -222,6 +245,7 @@ export class CommissionSettlementsService {
         const docStatus = this.documentationStatus(
           c.professionalProfile.personType,
           c.professionalProfile.ambassadorDocuments.map((doc) => doc.documentType),
+          c.professionalProfile.documentationApprovedAt,
         );
         group = {
           ambassador: {
@@ -236,6 +260,8 @@ export class CommissionSettlementsService {
               bankName: c.professionalProfile.bankName,
             },
             documentationComplete: docStatus.documentationComplete,
+            documentationApproved: docStatus.documentationApproved,
+            documentationPendingReview: docStatus.documentationPendingReview,
             missingDocTypes: docStatus.missingDocTypes,
           },
           totalAmount: new Decimal(0),

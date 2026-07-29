@@ -41,3 +41,18 @@ export function countAmbassadorsWithIncompleteDocs(
       ),
   ).length;
 }
+
+export function getDocumentationReviewSummary(
+  personType: PersonType | null | undefined,
+  presentTypes: Iterable<AmbassadorDocumentType>,
+  documentationApprovedAt: Date | null | undefined,
+) {
+  const missingDocTypes = getMissingAmbassadorDocTypes(personType, presentTypes);
+  const documentationComplete = missingDocTypes.length === 0;
+  return {
+    documentationComplete,
+    missingDocTypes,
+    documentationApproved: documentationComplete && !!documentationApprovedAt,
+    documentationPendingReview: documentationComplete && !documentationApprovedAt,
+  };
+}

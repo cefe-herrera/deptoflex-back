@@ -24,6 +24,7 @@ import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
 import {
   getMissingAmbassadorDocTypes,
   isAmbassadorDocumentationComplete,
+  getDocumentationReviewSummary,
 } from './ambassador-documents.util';
 
 
@@ -236,6 +237,11 @@ export class ProfessionalsService {
       metadata: { documentType, mediaFileId },
     });
 
+    await this.prisma.professionalProfile.update({
+      where: { id: profile.id },
+      data: { documentationApprovedAt: null, documentationApprovedById: null },
+    });
+
     return { confirmed: true, documentType };
   }
 
@@ -263,8 +269,21 @@ export class ProfessionalsService {
 
     if (!profile) throw new NotFoundException('Professional profile not found');
 
-    return this.mapProfile(profile);
+    const mapped = this.mapProfile(profile);
+    const docTypes = profile.ambassadorDocuments.map((d) => d.documentType);
+    const review = getDocumentationReviewSummary(
+      profile.personType,
+      docTypes,
+      profile.documentationApprovedAt,
+    );
 
+    return {
+      ...mapped,
+      documentationReview: {
+        ...review,
+        approvedAt: profile.documentationApprovedAt?.toISOString() ?? null,
+      },
+    };
   }
 
 
@@ -660,6 +679,59 @@ export class ProfessionalsService {
 
     return { message: 'Ambassador approved' };
 
+  }
+
+  async approveDocumentation(id: string, actorId: string) {
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { id },
+      include: { ambassadorDocuments: { select: { documentType: true } } },
+    });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    const docTypes = profile.ambassadorDocuments.map((d) => d.documentType);
+    if (!isAmbassadorDocumentationComplete(profile.personType, docTypes)) {
+      throw new BadRequestException('La documentación está incompleta');
+    }
+
+    await this.prisma.professionalProfile.update({
+      where: { id },
+      data: {
+        documentationApprovedAt: new Date(),
+        documentationApprovedById: actorId,
+      },
+    });
+
+    await this.audit.log({
+      actorId,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.DOCUMENTATION_APPROVED,
+      metadata: {},
+    });
+
+    return { message: 'Documentation approved' };
+  }
+
+  async rejectDocumentation(id: string, actorId: string, notes?: string) {
+    const profile = await this.findOne(id);
+
+    await this.prisma.professionalProfile.update({
+      where: { id },
+      data: {
+        documentationApprovedAt: null,
+        documentationApprovedById: null,
+      },
+    });
+
+    await this.audit.log({
+      actorId,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.DOCUMENTATION_REJECTED,
+      metadata: { notes: notes ?? null },
+    });
+
+    return { message: 'Documentation review rejected', profile };
   }
 
 
