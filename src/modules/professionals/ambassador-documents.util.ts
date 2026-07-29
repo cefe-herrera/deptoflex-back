@@ -26,3 +26,18 @@ export function isAmbassadorDocumentationComplete(
 ): boolean {
   return getMissingAmbassadorDocTypes(personType, presentTypes).length === 0;
 }
+
+export function countAmbassadorsWithIncompleteDocs(
+  profiles: Array<{
+    personType: PersonType | null;
+    ambassadorDocuments: Array<{ documentType: AmbassadorDocumentType }>;
+  }>,
+): number {
+  return profiles.filter(
+    (profile) =>
+      !isAmbassadorDocumentationComplete(
+        profile.personType,
+        profile.ambassadorDocuments.map((doc) => doc.documentType),
+      ),
+  ).length;
+}

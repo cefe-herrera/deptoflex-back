@@ -1,23 +1,15 @@
 import { IsDateString, IsEnum, IsOptional, IsUUID } from 'class-validator';
 
-export enum DashboardModality {
-  ALL = 'ALL',
-  TEMPORAL = 'TEMPORAL',
-  FLEX = 'FLEX',
+export enum DashboardActivityPeriod {
+  '7d' = '7d',
+  '30d' = '30d',
+  month = 'month',
 }
 
 export class AdminDashboardQueryDto {
   @IsOptional()
-  @IsDateString()
-  date?: string;
-
-  @IsOptional()
-  @IsUUID()
-  propertyId?: string;
-
-  @IsOptional()
-  @IsEnum(DashboardModality)
-  modality?: DashboardModality = DashboardModality.TEMPORAL;
+  @IsEnum(DashboardActivityPeriod)
+  period?: DashboardActivityPeriod = DashboardActivityPeriod['30d'];
 }
 
 export class SyncCloudbedsQueryDto {

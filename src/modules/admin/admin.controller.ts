@@ -26,9 +26,9 @@ export class AdminController {
 
   @Get('dashboard')
   @ApiOperation({
-    summary: 'Dashboard operativo (KPIs, forecast, disponibilidad)',
+    summary: 'Dashboard operativo de plataforma',
     description:
-      'Centro de operaciones estilo PMS: llegadas, salidas, actividad del día, forecast 14 días, matriz de disponibilidad e intents Cloudbeds.',
+      'Cola de acción, salud del negocio, actividad/ranking de embajadores e intents Cloudbeds.',
   })
   getDashboard(@Query() query: AdminDashboardQueryDto) {
     return this.dashboardService.getDashboard(query);

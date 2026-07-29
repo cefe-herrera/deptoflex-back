@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { countAmbassadorsWithIncompleteDocs } from '../professionals/ambassador-documents.util';
 
 @Injectable()
 export class AdminService {
@@ -9,22 +10,26 @@ export class AdminService {
     const [
       totalUsers,
       totalProperties,
-      pendingAmbassadors,
       activeAmbassadors,
+      incompleteDocsProfiles,
     ] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.property.count({ where: { deletedAt: null } }),
-      this.prisma.professionalProfile.count({
-        where: { ambassadorRequestedAt: { not: null }, status: 'PENDING' },
-      }),
       this.prisma.professionalProfile.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.professionalProfile.findMany({
+        where: { status: 'ACTIVE' },
+        select: {
+          personType: true,
+          ambassadorDocuments: { select: { documentType: true } },
+        },
+      }),
     ]);
 
     return {
       totalUsers,
       totalProperties,
-      pendingAmbassadors,
       activeAmbassadors,
+      ambassadorsIncompleteDocs: countAmbassadorsWithIncompleteDocs(incompleteDocsProfiles),
     };
   }
 }

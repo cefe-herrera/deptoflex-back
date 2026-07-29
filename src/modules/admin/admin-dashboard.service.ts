@@ -1,29 +1,33 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
-  BookingSource,
   BookingStatus,
+  CommissionStatus,
+  LeadStatus,
   Prisma,
-  UnitStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudbedsService } from '../cloudbeds/cloudbeds.service';
-import { DashboardModality } from './dto/admin-dashboard-query.dto';
+import { DashboardActivityPeriod } from './dto/admin-dashboard-query.dto';
+import { countAmbassadorsWithIncompleteDocs } from '../professionals/ambassador-documents.util';
 
-const ACTIVE_STATUSES: BookingStatus[] = [BookingStatus.CONFIRMED, BookingStatus.COMPLETED];
-const HIGH_OCCUPANCY_THRESHOLD = 85;
+type ActivityPeriod = '7d' | '30d' | 'month';
 
-export interface DashboardBookingRow {
-  id: string;
-  clientName: string;
-  status: BookingStatus;
-  source: BookingSource;
-  checkInDate: string;
-  checkOutDate: string;
-  totalNights: number;
-  totalAmount: number;
+export interface QueueAmount {
+  count: number;
+  amount: number;
   currency: string;
-  unitName: string | null;
-  propertyName: string | null;
+}
+
+interface AmbassadorRow {
+  id: string;
+  name: string;
+  bookings: number;
+  gmv: number;
+  commissions: number;
+  leads: number;
+  sessions: number;
+  sessionsConfirmed: number;
+  lastActivityAt: Date | null;
 }
 
 function parseDateOnly(iso: string): Date {
@@ -41,17 +45,80 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
-function dayRange(start: Date, count: number): Date[] {
-  return Array.from({ length: count }, (_, i) => addDays(start, i));
+function startOfMonth(d = new Date()): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
 }
 
-function overlapsNight(checkIn: Date, checkOut: Date, day: Date): boolean {
-  return checkIn <= day && checkOut > day;
+function periodStart(period: ActivityPeriod): Date {
+  const now = new Date();
+  if (period === '7d') return addDays(now, -7);
+  if (period === '30d') return addDays(now, -30);
+  return startOfMonth(now);
 }
 
 function decimalToNumber(v: Prisma.Decimal | number | null | undefined): number {
   if (v == null) return 0;
   return typeof v === 'number' ? v : Number(v);
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function conversionRate(confirmed: number, started: number): number | null {
+  if (started < 3) return null;
+  return Math.round((confirmed / started) * 1000) / 10;
+}
+
+function maxDate(...dates: (Date | null | undefined)[]): Date | null {
+  const valid = dates.filter((d): d is Date => d != null);
+  if (valid.length === 0) return null;
+  return valid.reduce((a, b) => (a > b ? a : b));
+}
+
+function daysSince(date: Date | null): number {
+  if (!date) return 999;
+  return Math.floor((Date.now() - date.getTime()) / 86400000);
+}
+
+const DAY_LABELS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+
+function dayRangeInclusive(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  let cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur = addDays(cur, 1);
+  }
+  return days;
+}
+
+function dayLabel(d: Date): string {
+  return `${DAY_LABELS[d.getUTCDay()]} ${d.getUTCDate()}`;
+}
+
+export interface EvolutionDay {
+  date: string;
+  dayLabel: string;
+  bookings: number;
+  bookingsGmv: number;
+  commissions: number;
+  commissionsAmount: number;
+  settlementsPaid: number;
+  settlementsPaidAmount: number;
+}
+
+function emptyEvolutionDay(d: Date): EvolutionDay {
+  return {
+    date: toDateStr(d),
+    dayLabel: dayLabel(d),
+    bookings: 0,
+    bookingsGmv: 0,
+    commissions: 0,
+    commissionsAmount: 0,
+    settlementsPaid: 0,
+    settlementsPaidAmount: 0,
+  };
 }
 
 @Injectable()
@@ -61,85 +128,27 @@ export class AdminDashboardService {
     private cloudbeds: CloudbedsService,
   ) {}
 
-  async getDashboard(query: {
-    date?: string;
-    propertyId?: string;
-    modality?: DashboardModality;
-  }) {
-    const refDate = query.date ? parseDateOnly(query.date) : parseDateOnly(toDateStr(new Date()));
-    const dateStr = toDateStr(refDate);
-    const modality = query.modality ?? DashboardModality.TEMPORAL;
-    const tomorrow = addDays(refDate, 1);
+  async getDashboard(query: { period?: DashboardActivityPeriod }) {
+    const period = (query.period ?? DashboardActivityPeriod['30d']) as ActivityPeriod;
+    const refDate = parseDateOnly(toDateStr(new Date()));
 
-    const [platform, properties, bookings, flexBookings, units, blocks, intentCounts, flexInventory] =
-      await Promise.all([
-        this.getPlatformStats(),
-        this.listProperties(),
-        this.loadBookings(query.propertyId, modality),
-        modality !== DashboardModality.TEMPORAL ? this.loadFlexBookings() : Promise.resolve([]),
-        this.loadUnits(query.propertyId, modality),
-        this.loadBlocks(query.propertyId),
-        this.loadIntentFunnel(query.propertyId, refDate),
-        modality !== DashboardModality.TEMPORAL ? this.countFlexInventory() : Promise.resolve(0),
-      ]);
-
-    const bookingRows = bookings.map((b) => this.toRow(b));
-    const activeBookings = bookings.filter((b) => ACTIVE_STATUSES.includes(b.status));
-
-    const todayKpis = this.computeTodayKpis(
-      activeBookings,
-      bookings,
-      flexBookings,
-      units,
-      flexInventory,
-      refDate,
-      tomorrow,
-      modality,
-    );
-
-    const activity = this.computeActivity(bookings, flexBookings, refDate, modality);
-    const reservations = this.buildReservationLists(
-      bookingRows,
-      flexBookings,
-      refDate,
-      tomorrow,
-      modality,
-    );
-
-    const forecastDays = dayRange(refDate, 14);
-    const forecast = this.buildForecast(
-      activeBookings,
-      flexBookings,
-      units,
-      blocks,
-      forecastDays,
-      modality,
-    );
-
-    const availability = this.buildAvailabilityMatrix(
-      activeBookings,
-      units,
-      blocks,
-      forecastDays,
-    );
-
-    const cloudbedsSnapshot = await this.getLatestCloudbedsSnapshot(query.propertyId);
+    const [queues, health, intentFunnel, ambassadorActivity, evolution] = await Promise.all([
+      this.getQueueStats(),
+      this.getHealthStats(),
+      this.loadIntentFunnel(refDate),
+      this.getAmbassadorActivityStats(period),
+      this.getOperationsEvolution(period),
+    ]);
 
     return {
-      date: dateStr,
-      propertyId: query.propertyId ?? null,
-      modality,
+      period,
       disclaimer:
-        'Métricas basadas en reservas registradas en WeFlex. Puede diferir de Cloudbeds si hay reservas externas.',
-      today: todayKpis,
-      activity,
-      reservations,
-      platform,
-      properties,
-      forecast,
-      availability,
-      intentFunnel: intentCounts,
-      cloudbedsSnapshot,
+        'Centro de operaciones de plataforma. Métricas hoteleras disponibles en Reservas.',
+      queues,
+      health,
+      intentFunnel,
+      ambassadorActivity,
+      evolution,
     };
   }
 
@@ -181,101 +190,180 @@ export class AdminDashboardService {
     };
   }
 
-  private async getPlatformStats() {
-    const [totalUsers, totalProperties, pendingAmbassadors, activeAmbassadors] =
-      await Promise.all([
-        this.prisma.user.count({ where: { deletedAt: null } }),
-        this.prisma.property.count({ where: { deletedAt: null } }),
-        this.prisma.professionalProfile.count({
-          where: { ambassadorRequestedAt: { not: null }, status: 'PENDING' },
-        }),
-        this.prisma.professionalProfile.count({ where: { status: 'ACTIVE' } }),
-      ]);
-    return { totalUsers, totalProperties, pendingAmbassadors, activeAmbassadors };
-  }
+  private async getQueueStats() {
+    const [
+      pendingValidation,
+      approvedUnpaid,
+      settlementsDraft,
+      flexPaymentsPending,
+      bookingsPending,
+      incompleteDocsProfiles,
+    ] = await Promise.all([
+      this.prisma.commission.aggregate({
+        where: { status: CommissionStatus.PENDING_VALIDATION },
+        _count: { _all: true },
+        _sum: { commissionAmount: true },
+      }),
+      this.prisma.commission.aggregate({
+        where: {
+          status: CommissionStatus.APPROVED,
+          settlementId: null,
+        },
+        _count: { _all: true },
+        _sum: { commissionAmount: true },
+      }),
+      this.prisma.commissionSettlement.aggregate({
+        where: { status: 'DRAFT' },
+        _count: { _all: true },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.flexBookingPayment.count({ where: { status: 'PENDING' } }),
+      this.prisma.booking.count({
+        where: { deletedAt: null, status: BookingStatus.PENDING },
+      }),
+      this.prisma.professionalProfile.findMany({
+        where: { status: 'ACTIVE' },
+        select: {
+          personType: true,
+          ambassadorDocuments: { select: { documentType: true } },
+        },
+      }),
+    ]);
 
-  private async listProperties() {
-    return this.prisma.property.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, cloudbedsWidgetPropertyId: true },
-      orderBy: { name: 'asc' },
+    const toQueue = (
+      count: number,
+      amount: Prisma.Decimal | null | undefined,
+    ): QueueAmount => ({
+      count,
+      amount: roundMoney(decimalToNumber(amount)),
+      currency: 'ARS',
     });
-  }
 
-  private bookingWhere(propertyId?: string, modality?: DashboardModality): Prisma.BookingWhereInput {
-    const where: Prisma.BookingWhereInput = { deletedAt: null };
-    if (propertyId) where.propertyId = propertyId;
-    if (modality === DashboardModality.TEMPORAL) {
-      where.source = { in: [BookingSource.CLOUDBEDS, BookingSource.DIRECT] };
-    } else if (modality === DashboardModality.FLEX) {
-      where.source = BookingSource.FLEX;
-    }
-    return where;
-  }
-
-  private async loadBookings(propertyId?: string, modality?: DashboardModality) {
-    return this.prisma.booking.findMany({
-      where: this.bookingWhere(propertyId, modality),
-      include: {
-        unit: { select: { id: true, name: true } },
-        property: { select: { id: true, name: true } },
-      },
-      orderBy: { checkInDate: 'asc' },
-    });
-  }
-
-  private async loadFlexBookings(_propertyId?: string) {
-    return this.prisma.flexBooking.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: ['CONFIRMED', 'COMPLETED', 'PENDING'] },
-      },
-      include: {
-        propertyFlex: { select: { id: true, name: true } },
-      },
-    });
-  }
-
-  private async countFlexInventory() {
-    return this.prisma.propertyFlex.count({
-      where: { deletedAt: null, status: 'ACTIVE' },
-    });
-  }
-
-  private async loadUnits(propertyId?: string, modality?: DashboardModality) {
-    const where: Prisma.UnitWhereInput = {
-      deletedAt: null,
-      status: UnitStatus.ACTIVE,
+    return {
+      commissionsPendingValidation: toQueue(
+        pendingValidation._count._all,
+        pendingValidation._sum.commissionAmount,
+      ),
+      commissionsApprovedUnpaid: toQueue(
+        approvedUnpaid._count._all,
+        approvedUnpaid._sum.commissionAmount,
+      ),
+      settlementsDraft: toQueue(
+        settlementsDraft._count._all,
+        settlementsDraft._sum.totalAmount,
+      ),
+      flexPaymentsPending,
+      bookingsPending,
+      ambassadorsIncompleteDocs: countAmbassadorsWithIncompleteDocs(incompleteDocsProfiles),
     };
-    if (propertyId) where.propertyId = propertyId;
-    if (modality === DashboardModality.TEMPORAL) {
-      where.OR = [{ rentalModality: 'TEMPORAL' }, { rentalModality: null }];
-    } else if (modality === DashboardModality.FLEX) {
-      where.rentalModality = 'FLEX';
-    }
-    return this.prisma.unit.findMany({
-      where,
-      select: { id: true, name: true, propertyId: true, cloudbedsRoomTypeId: true },
-    });
   }
 
-  private async loadBlocks(propertyId?: string) {
-    return this.prisma.unitAvailability.findMany({
-      where: {
-        isAvailable: false,
-        ...(propertyId && { unit: { propertyId } }),
-      },
-      include: { unit: { select: { id: true, name: true, cloudbedsRoomTypeId: true } } },
-    });
+  private async getHealthStats() {
+    const monthStart = startOfMonth();
+    const sevenDaysAgo = addDays(new Date(), -7);
+    const closedLeadStatuses: LeadStatus[] = [
+      LeadStatus.WON,
+      LeadStatus.LOST,
+      LeadStatus.CONVERTED,
+    ];
+    const activeBookingStatuses: BookingStatus[] = [
+      BookingStatus.CONFIRMED,
+      BookingStatus.COMPLETED,
+    ];
+
+    const [
+      monthBookings,
+      monthFlexBookings,
+      commissionLiability,
+      openLeads,
+      newLeads7d,
+      monthBookingsTotal,
+      monthAttributedBookings,
+      activeAmbassadors,
+      totalProperties,
+      totalUsers,
+    ] = await Promise.all([
+      this.prisma.booking.aggregate({
+        where: {
+          deletedAt: null,
+          status: { in: activeBookingStatuses },
+          createdAt: { gte: monthStart },
+        },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.flexBooking.aggregate({
+        where: {
+          deletedAt: null,
+          status: { in: ['CONFIRMED', 'COMPLETED'] },
+          createdAt: { gte: monthStart },
+        },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.commission.aggregate({
+        where: {
+          status: CommissionStatus.APPROVED,
+          settlementId: null,
+        },
+        _sum: { commissionAmount: true },
+      }),
+      this.prisma.lead.count({
+        where: { deletedAt: null, status: { notIn: closedLeadStatuses } },
+      }),
+      this.prisma.lead.count({
+        where: {
+          deletedAt: null,
+          status: LeadStatus.NEW,
+          createdAt: { gte: sevenDaysAgo },
+        },
+      }),
+      this.prisma.booking.count({
+        where: {
+          deletedAt: null,
+          status: { in: activeBookingStatuses },
+          createdAt: { gte: monthStart },
+        },
+      }),
+      this.prisma.booking.count({
+        where: {
+          deletedAt: null,
+          status: { in: activeBookingStatuses },
+          createdAt: { gte: monthStart },
+          professionalProfileId: { not: null },
+        },
+      }),
+      this.prisma.professionalProfile.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.property.count({ where: { deletedAt: null } }),
+      this.prisma.user.count({ where: { deletedAt: null } }),
+    ]);
+
+    const gmvMonth =
+      decimalToNumber(monthBookings._sum.totalAmount) +
+      decimalToNumber(monthFlexBookings._sum.totalAmount);
+
+    const ambassadorAttributionPercent =
+      monthBookingsTotal > 0
+        ? Math.round((monthAttributedBookings / monthBookingsTotal) * 1000) / 10
+        : null;
+
+    return {
+      gmvMonth: roundMoney(gmvMonth),
+      commissionLiability: roundMoney(decimalToNumber(commissionLiability._sum.commissionAmount)),
+      currency: 'ARS',
+      openLeads,
+      newLeads7d,
+      ambassadorAttributionPercent,
+      activeAmbassadors,
+      totalProperties,
+      totalUsers,
+    };
   }
 
-  private async loadIntentFunnel(propertyId: string | undefined, refDate: Date) {
+  private async loadIntentFunnel(refDate: Date) {
     const since = addDays(refDate, -30);
     const counts = await this.prisma.reservationIntent.groupBy({
       by: ['status'],
       where: {
         createdAt: { gte: since, lte: addDays(refDate, 1) },
-        ...(propertyId && { propertyId }),
       },
       _count: { _all: true },
     });
@@ -291,403 +379,394 @@ export class AdminDashboardService {
     return { pending, redirected, confirmed, expired, conversionRate };
   }
 
-  private async getLatestCloudbedsSnapshot(propertyId?: string) {
-    if (!propertyId) return null;
-    const snap = await this.prisma.availabilitySnapshot.findFirst({
-      where: { propertyId },
-      orderBy: { createdAt: 'desc' },
-      include: { property: { select: { name: true } } },
-    });
-    if (!snap) return null;
-    return {
-      syncedAt: snap.createdAt.toISOString(),
-      totalAvailable: snap.totalAvailable,
-      propertyName: snap.property.name,
-      checkin: toDateStr(snap.checkin),
-      checkout: toDateStr(snap.checkout),
+  private async getOperationsEvolution(period: ActivityPeriod) {
+    const since = periodStart(period);
+    const today = parseDateOnly(toDateStr(new Date()));
+    const dayList = dayRangeInclusive(since, today);
+    const buckets = new Map(dayList.map((d) => [toDateStr(d), emptyEvolutionDay(d)]));
+
+    const activeBookingStatuses: BookingStatus[] = [
+      BookingStatus.CONFIRMED,
+      BookingStatus.COMPLETED,
+      BookingStatus.PENDING,
+    ];
+
+    const [bookings, flexBookings, commissions, settlementsPaid] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          deletedAt: null,
+          createdAt: { gte: since },
+          status: { in: activeBookingStatuses },
+        },
+        select: { createdAt: true, totalAmount: true },
+      }),
+      this.prisma.flexBooking.findMany({
+        where: {
+          deletedAt: null,
+          createdAt: { gte: since },
+          status: { in: ['CONFIRMED', 'COMPLETED', 'PENDING'] },
+        },
+        select: { createdAt: true, totalAmount: true },
+      }),
+      this.prisma.commission.findMany({
+        where: {
+          createdAt: { gte: since },
+          status: { not: CommissionStatus.CANCELLED },
+        },
+        select: { createdAt: true, commissionAmount: true },
+      }),
+      this.prisma.commissionSettlement.findMany({
+        where: {
+          status: 'PAID',
+          paidAt: { gte: since },
+        },
+        select: { paidAt: true, totalAmount: true },
+      }),
+    ]);
+
+    const bumpBooking = (at: Date, amount: number) => {
+      const key = toDateStr(at);
+      const bucket = buckets.get(key);
+      if (!bucket) return;
+      bucket.bookings += 1;
+      bucket.bookingsGmv = roundMoney(bucket.bookingsGmv + amount);
     };
-  }
 
-  private toRow(b: Awaited<ReturnType<typeof this.loadBookings>>[number]): DashboardBookingRow {
-    return {
-      id: b.id,
-      clientName: b.clientName,
-      status: b.status,
-      source: b.source,
-      checkInDate: toDateStr(b.checkInDate),
-      checkOutDate: toDateStr(b.checkOutDate),
-      totalNights: b.totalNights,
-      totalAmount: decimalToNumber(b.totalAmount),
-      currency: b.currency,
-      unitName: b.unit?.name ?? null,
-      propertyName: b.property?.name ?? null,
-    };
-  }
+    for (const b of bookings) bumpBooking(b.createdAt, decimalToNumber(b.totalAmount));
+    for (const fb of flexBookings) bumpBooking(fb.createdAt, decimalToNumber(fb.totalAmount));
 
-  private computeTodayKpis(
-    activeBookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    allBookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    units: Awaited<ReturnType<typeof this.loadUnits>>,
-    flexInventory: number,
-    refDate: Date,
-    tomorrow: Date,
-    modality: DashboardModality,
-  ) {
-    const refStr = toDateStr(refDate);
-    const tomorrowStr = toDateStr(tomorrow);
-
-    let arrivals = 0;
-    let departures = 0;
-    let inHouse = 0;
-    let occupiedUnits = 0;
-
-    for (const b of activeBookings) {
-      const ci = toDateStr(b.checkInDate);
-      const co = toDateStr(b.checkOutDate);
-      if (ci === refStr) arrivals += 1;
-      if (co === refStr) departures += 1;
-      if (overlapsNight(b.checkInDate, b.checkOutDate, refDate)) {
-        inHouse += 1;
-        occupiedUnits += 1;
-      }
+    for (const c of commissions) {
+      const key = toDateStr(c.createdAt);
+      const bucket = buckets.get(key);
+      if (!bucket) continue;
+      bucket.commissions += 1;
+      bucket.commissionsAmount = roundMoney(
+        bucket.commissionsAmount + decimalToNumber(c.commissionAmount),
+      );
     }
 
-    if (modality !== DashboardModality.TEMPORAL) {
-      for (const fb of flexBookings.filter((f) => ['CONFIRMED', 'COMPLETED'].includes(f.status))) {
-        const start = parseDateOnly(toDateStr(fb.startDate));
-        const end = parseDateOnly(toDateStr(fb.endDate));
-        const ci = toDateStr(fb.startDate);
-        const co = toDateStr(fb.endDate);
-        if (ci === refStr) arrivals += 1;
-        if (co === refStr) departures += 1;
-        if (overlapsNight(start, end, refDate)) {
-          inHouse += 1;
-          occupiedUnits += 1;
-        }
-      }
+    for (const s of settlementsPaid) {
+      if (!s.paidAt) continue;
+      const key = toDateStr(s.paidAt);
+      const bucket = buckets.get(key);
+      if (!bucket) continue;
+      bucket.settlementsPaid += 1;
+      bucket.settlementsPaidAmount = roundMoney(
+        bucket.settlementsPaidAmount + decimalToNumber(s.totalAmount),
+      );
     }
 
-    const pendingConfirmation =
-      allBookings.filter((b) => b.status === BookingStatus.PENDING).length +
-      (modality !== DashboardModality.TEMPORAL
-        ? flexBookings.filter((f) => f.status === 'PENDING').length
-        : 0);
-
-    const totalInventory =
-      modality === DashboardModality.FLEX
-        ? flexInventory
-        : modality === DashboardModality.ALL
-          ? units.length + flexInventory
-          : units.length;
-
-    const occupancyPercent =
-      totalInventory > 0 ? Math.round((occupiedUnits / totalInventory) * 10000) / 100 : null;
-
-    return {
-      arrivals,
-      departures,
-      inHouse,
-      pendingConfirmation,
-      occupancyPercent,
-      totalInventory,
-      tomorrowArrivals: this.countArrivalsOn(activeBookings, flexBookings, tomorrowStr, modality),
-      tomorrowDepartures: this.countDeparturesOn(activeBookings, flexBookings, tomorrowStr, modality),
-    };
-  }
-
-  private countArrivalsOn(
-    bookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    dateStr: string,
-    modality: DashboardModality,
-  ) {
-    let n = bookings.filter(
-      (b) => ACTIVE_STATUSES.includes(b.status) && toDateStr(b.checkInDate) === dateStr,
-    ).length;
-    if (modality !== DashboardModality.TEMPORAL) {
-      n += flexBookings.filter(
-        (f) => ['CONFIRMED', 'COMPLETED'].includes(f.status) && toDateStr(f.startDate) === dateStr,
-      ).length;
-    }
-    return n;
-  }
-
-  private countDeparturesOn(
-    bookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    dateStr: string,
-    modality: DashboardModality,
-  ) {
-    let n = bookings.filter(
-      (b) => ACTIVE_STATUSES.includes(b.status) && toDateStr(b.checkOutDate) === dateStr,
-    ).length;
-    if (modality !== DashboardModality.TEMPORAL) {
-      n += flexBookings.filter(
-        (f) => ['CONFIRMED', 'COMPLETED'].includes(f.status) && toDateStr(f.endDate) === dateStr,
-      ).length;
-    }
-    return n;
-  }
-
-  private computeActivity(
-    bookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    refDate: Date,
-    modality: DashboardModality,
-  ) {
-    const refStr = toDateStr(refDate);
-    const dayStart = refDate;
-    const dayEnd = addDays(refDate, 1);
-
-    const createdToday = bookings.filter(
-      (b) => b.createdAt >= dayStart && b.createdAt < dayEnd,
-    );
-    const flexCreatedToday =
-      modality !== DashboardModality.TEMPORAL
-        ? flexBookings.filter((f) => f.createdAt >= dayStart && f.createdAt < dayEnd)
-        : [];
-    const cancelledToday = bookings.filter(
-      (b) =>
-        b.status === BookingStatus.CANCELLED &&
-        b.updatedAt >= dayStart &&
-        b.updatedAt < dayEnd,
+    const days = [...buckets.values()];
+    const totals = days.reduce(
+      (acc, d) => ({
+        bookings: acc.bookings + d.bookings,
+        bookingsGmv: roundMoney(acc.bookingsGmv + d.bookingsGmv),
+        commissions: acc.commissions + d.commissions,
+        commissionsAmount: roundMoney(acc.commissionsAmount + d.commissionsAmount),
+        settlementsPaid: acc.settlementsPaid + d.settlementsPaid,
+        settlementsPaidAmount: roundMoney(acc.settlementsPaidAmount + d.settlementsPaidAmount),
+      }),
+      {
+        bookings: 0,
+        bookingsGmv: 0,
+        commissions: 0,
+        commissionsAmount: 0,
+        settlementsPaid: 0,
+        settlementsPaidAmount: 0,
+      },
     );
 
-    let revenueToday = 0;
-    let nightsSoldToday = 0;
-    const sales: DashboardBookingRow[] = [];
+    return { period, days, totals };
+  }
 
-    for (const b of createdToday.filter((x) => ACTIVE_STATUSES.includes(x.status))) {
-      revenueToday += decimalToNumber(b.totalAmount);
-      nightsSoldToday += b.totalNights;
-      sales.push(this.toRow(b));
-    }
+  private async getAmbassadorActivityStats(period: ActivityPeriod) {
+    const since = periodStart(period);
+    const inactiveSince = addDays(new Date(), -30);
+    const activeBookingStatuses: BookingStatus[] = [
+      BookingStatus.CONFIRMED,
+      BookingStatus.COMPLETED,
+      BookingStatus.PENDING,
+    ];
 
-    if (modality !== DashboardModality.TEMPORAL) {
-      for (const fb of flexBookings.filter(
-        (f) => f.createdAt >= dayStart && f.createdAt < dayEnd && this.isConfirmedLike(f),
-      )) {
-        revenueToday += decimalToNumber(fb.totalAmount);
-        nightsSoldToday += fb.totalMonths * 30;
-        sales.push({
-          id: fb.id,
-          clientName: fb.clientName,
-          status: fb.status as BookingStatus,
-          source: BookingSource.FLEX,
-          checkInDate: toDateStr(fb.startDate),
-          checkOutDate: toDateStr(fb.endDate),
-          totalNights: fb.totalMonths * 30,
-          totalAmount: decimalToNumber(fb.totalAmount),
-          currency: 'ARS',
-          unitName: fb.propertyFlex?.name ?? null,
-          propertyName: fb.propertyFlex?.name ?? null,
+    const [
+      bookings,
+      flexBookings,
+      commissions,
+      leads,
+      sessions,
+      activeProfiles,
+      newAmbassadors,
+      recentBookings,
+      recentFlex,
+      recentLeads,
+      recentSessions,
+      recentCommissions,
+    ] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: since },
+          status: { in: activeBookingStatuses },
+        },
+        select: {
+          professionalProfileId: true,
+          totalAmount: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.flexBooking.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: since },
+          status: { in: ['CONFIRMED', 'COMPLETED', 'PENDING'] },
+        },
+        select: {
+          professionalProfileId: true,
+          totalAmount: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.commission.findMany({
+        where: {
+          professionalProfileId: { not: null },
+          createdAt: { gte: since },
+          status: { not: CommissionStatus.CANCELLED },
+        },
+        select: {
+          professionalProfileId: true,
+          commissionAmount: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.lead.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: since },
+        },
+        select: {
+          professionalProfileId: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.ambassadorBookingSession.findMany({
+        where: { createdAt: { gte: since } },
+        select: {
+          professionalProfileId: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.professionalProfile.findMany({
+        where: { status: 'ACTIVE' },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          createdAt: true,
+          ambassadorRequestedAt: true,
+        },
+      }),
+      this.prisma.professionalProfile.count({
+        where: {
+          status: 'ACTIVE',
+          OR: [
+            { ambassadorRequestedAt: { gte: since } },
+            { createdAt: { gte: since } },
+          ],
+        },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: inactiveSince },
+        },
+        select: { professionalProfileId: true, createdAt: true },
+      }),
+      this.prisma.flexBooking.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: inactiveSince },
+        },
+        select: { professionalProfileId: true, createdAt: true },
+      }),
+      this.prisma.lead.findMany({
+        where: {
+          deletedAt: null,
+          professionalProfileId: { not: null },
+          createdAt: { gte: inactiveSince },
+        },
+        select: { professionalProfileId: true, createdAt: true },
+      }),
+      this.prisma.ambassadorBookingSession.findMany({
+        where: { createdAt: { gte: inactiveSince } },
+        select: { professionalProfileId: true, createdAt: true },
+      }),
+      this.prisma.commission.findMany({
+        where: {
+          professionalProfileId: { not: null },
+          createdAt: { gte: inactiveSince },
+          status: { not: CommissionStatus.CANCELLED },
+        },
+        select: { professionalProfileId: true, createdAt: true },
+      }),
+    ]);
+
+    const rows = new Map<string, AmbassadorRow>();
+
+    const ensure = (id: string): AmbassadorRow => {
+      if (!rows.has(id)) {
+        rows.set(id, {
+          id,
+          name: '',
+          bookings: 0,
+          gmv: 0,
+          commissions: 0,
+          leads: 0,
+          sessions: 0,
+          sessionsConfirmed: 0,
+          lastActivityAt: null,
         });
       }
-    }
-
-    return {
-      bookingsCreatedToday: createdToday.length + flexCreatedToday.length,
-      nightsSoldToday,
-      revenueToday,
-      currency: 'ARS',
-      cancellationsToday: cancelledToday.length,
-      sales: sales.slice(0, 20),
+      return rows.get(id)!;
     };
-  }
 
-  private isConfirmedLike(b: { status: string }) {
-    return ['CONFIRMED', 'COMPLETED'].includes(b.status);
-  }
+    for (const b of bookings) {
+      if (!b.professionalProfileId) continue;
+      const row = ensure(b.professionalProfileId);
+      row.bookings += 1;
+      row.gmv += decimalToNumber(b.totalAmount);
+      row.lastActivityAt = maxDate(row.lastActivityAt, b.createdAt);
+    }
 
-  private buildReservationLists(
-    bookingRows: DashboardBookingRow[],
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    refDate: Date,
-    tomorrow: Date,
-    modality: DashboardModality,
-  ) {
-    const refStr = toDateStr(refDate);
-    const tomorrowStr = toDateStr(tomorrow);
+    for (const fb of flexBookings) {
+      if (!fb.professionalProfileId) continue;
+      const row = ensure(fb.professionalProfileId);
+      row.bookings += 1;
+      row.gmv += decimalToNumber(fb.totalAmount);
+      row.lastActivityAt = maxDate(row.lastActivityAt, fb.createdAt);
+    }
 
-    const flexRows: DashboardBookingRow[] =
-      modality === DashboardModality.TEMPORAL
-        ? []
-        : flexBookings
-            .filter((f) => ['CONFIRMED', 'COMPLETED', 'PENDING'].includes(f.status))
-            .map((fb) => ({
-              id: fb.id,
-              clientName: fb.clientName,
-              status: fb.status as BookingStatus,
-              source: BookingSource.FLEX,
-              checkInDate: toDateStr(fb.startDate),
-              checkOutDate: toDateStr(fb.endDate),
-              totalNights: fb.totalMonths * 30,
-              totalAmount: decimalToNumber(fb.totalAmount),
-              currency: 'ARS',
-              unitName: fb.propertyFlex?.name ?? null,
-              propertyName: fb.propertyFlex?.name ?? null,
-            }));
+    for (const c of commissions) {
+      if (!c.professionalProfileId) continue;
+      const row = ensure(c.professionalProfileId);
+      row.commissions += decimalToNumber(c.commissionAmount);
+      row.lastActivityAt = maxDate(row.lastActivityAt, c.createdAt);
+    }
 
-    const all = [...bookingRows.filter((b) => ACTIVE_STATUSES.includes(b.status)), ...flexRows];
+    for (const l of leads) {
+      if (!l.professionalProfileId) continue;
+      const row = ensure(l.professionalProfileId);
+      row.leads += 1;
+      row.lastActivityAt = maxDate(row.lastActivityAt, l.createdAt);
+    }
 
-    return {
-      arrivals: all.filter((b) => b.checkInDate === refStr),
-      departures: all.filter((b) => b.checkOutDate === refStr),
-      inHouse: all.filter((b) => {
-        const ci = parseDateOnly(b.checkInDate);
-        const co = parseDateOnly(b.checkOutDate);
-        return overlapsNight(ci, co, refDate);
-      }),
-      tomorrowArrivals: all.filter((b) => b.checkInDate === tomorrowStr),
-      tomorrowDepartures: all.filter((b) => b.checkOutDate === tomorrowStr),
+    for (const s of sessions) {
+      const row = ensure(s.professionalProfileId);
+      row.sessions += 1;
+      if (s.status === 'CONFIRMED') row.sessionsConfirmed += 1;
+      row.lastActivityAt = maxDate(row.lastActivityAt, s.createdAt);
+    }
+
+    const profileMap = new Map(
+      activeProfiles.map((p) => [
+        p.id,
+        `${p.firstName} ${p.lastName}`.trim(),
+      ]),
+    );
+
+    for (const row of rows.values()) {
+      row.name = profileMap.get(row.id) ?? 'Embajador';
+      row.gmv = roundMoney(row.gmv);
+      row.commissions = roundMoney(row.commissions);
+    }
+
+    const activeInPeriod = new Set(rows.keys());
+    const totalSessionsStarted = sessions.length;
+    const totalSessionsConfirmed = sessions.filter((s) => s.status === 'CONFIRMED').length;
+
+    const lastActivity30d = new Map<string, Date>();
+    const touchActivity = (profileId: string | null | undefined, at: Date) => {
+      if (!profileId) return;
+      const prev = lastActivity30d.get(profileId);
+      if (!prev || at > prev) lastActivity30d.set(profileId, at);
     };
-  }
-
-  private buildForecast(
-    activeBookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    flexBookings: Awaited<ReturnType<typeof this.loadFlexBookings>>,
-    units: Awaited<ReturnType<typeof this.loadUnits>>,
-    blocks: Awaited<ReturnType<typeof this.loadBlocks>>,
-    days: Date[],
-    modality: DashboardModality,
-  ) {
-    const totalUnits = units.length || 1;
-    const dayLabels = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
-
-    const forecastDays = days.map((day) => {
-      let occupied = 0;
-      let blocked = 0;
-      let revenue = 0;
-
-      for (const b of activeBookings) {
-        if (overlapsNight(b.checkInDate, b.checkOutDate, day)) {
-          occupied += 1;
-          const nights = Math.max(b.totalNights, 1);
-          revenue += decimalToNumber(b.totalAmount) / nights;
-        }
-      }
-
-      if (modality !== DashboardModality.TEMPORAL) {
-        for (const fb of flexBookings.filter((f) => ['CONFIRMED', 'COMPLETED'].includes(f.status))) {
-          const start = parseDateOnly(toDateStr(fb.startDate));
-          const end = parseDateOnly(toDateStr(fb.endDate));
-          if (overlapsNight(start, end, day)) {
-            occupied += 1;
-            const contractDays = Math.max(
-              Math.ceil((end.getTime() - start.getTime()) / 86400000),
-              1,
-            );
-            revenue += decimalToNumber(fb.totalAmount) / contractDays;
-          }
-        }
-      }
-
-      for (const bl of blocks) {
-        if (overlapsNight(bl.startDate, bl.endDate, day)) blocked += 1;
-      }
-
-      const occupancyPercent = Math.round((occupied / totalUnits) * 10000) / 100;
-
-      return {
-        date: toDateStr(day),
-        dayLabel: `${dayLabels[day.getUTCDay()]} ${day.getUTCDate()}`,
-        occupiedUnits: occupied,
-        blockedUnits: blocked,
-        totalUnits,
-        occupancyPercent,
-        revenue: Math.round(revenue * 100) / 100,
-        highOccupancy: occupancyPercent >= HIGH_OCCUPANCY_THRESHOLD,
-      };
-    });
-
-    const occupancyPercent14d =
-      forecastDays.length > 0
-        ? Math.round(
-            (forecastDays.reduce((s, d) => s + d.occupancyPercent, 0) / forecastDays.length) * 100,
-          ) / 100
-        : 0;
-    const revenue14d = Math.round(forecastDays.reduce((s, d) => s + d.revenue, 0) * 100) / 100;
-
-    return { occupancyPercent14d, revenue14d, days: forecastDays };
-  }
-
-  private buildAvailabilityMatrix(
-    activeBookings: Awaited<ReturnType<typeof this.loadBookings>>,
-    units: Awaited<ReturnType<typeof this.loadUnits>>,
-    blocks: Awaited<ReturnType<typeof this.loadBlocks>>,
-    days: Date[],
-  ) {
-    type Group = { key: string; name: string; unitIds: string[] };
-    const groups = new Map<string, Group>();
-
-    for (const u of units) {
-      const key = u.cloudbedsRoomTypeId ?? u.name;
-      if (!groups.has(key)) {
-        groups.set(key, { key, name: u.name, unitIds: [] });
-      }
-      groups.get(key)!.unitIds.push(u.id);
+    for (const item of [
+      ...recentBookings,
+      ...recentFlex,
+      ...recentLeads,
+      ...recentSessions,
+      ...recentCommissions,
+    ]) {
+      touchActivity(item.professionalProfileId, item.createdAt);
     }
 
-    if (groups.size === 0) {
-      groups.set('general', { key: 'general', name: 'General', unitIds: [] });
-    }
+    const ranking = [...rows.values()]
+      .filter((r) => profileMap.has(r.id))
+      .sort((a, b) => b.gmv - a.gmv || b.bookings - a.bookings)
+      .slice(0, 10)
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        bookings: r.bookings,
+        gmv: r.gmv,
+        commissions: r.commissions,
+        leads: r.leads,
+        sessions: r.sessions,
+        conversionRate: conversionRate(r.sessionsConfirmed, r.sessions),
+        lastActivityAt: r.lastActivityAt?.toISOString() ?? null,
+      }));
 
-    const unitToGroup = new Map<string, string>();
-    for (const g of groups.values()) {
-      for (const id of g.unitIds) unitToGroup.set(id, g.key);
-    }
-
-    const overbookings: { date: string; unitTypeName: string; deficit: number }[] = [];
-    const rows = [...groups.values()].map((group) => {
-      const totalUnits = Math.max(group.unitIds.length, 1);
-      const dayCells = days.map((day) => {
-        let reserved = 0;
-        let blocked = 0;
-
-        for (const b of activeBookings) {
-          if (!overlapsNight(b.checkInDate, b.checkOutDate, day)) continue;
-          if (b.unitId && group.unitIds.includes(b.unitId)) reserved += 1;
-          else if (!b.unitId && group.key === 'general') reserved += 1;
-        }
-
-        for (const bl of blocks) {
-          if (!overlapsNight(bl.startDate, bl.endDate, day)) continue;
-          if (group.unitIds.includes(bl.unitId)) blocked += 1;
-        }
-
-        const available = Math.max(totalUnits - reserved - blocked, 0);
-        const deficit = reserved + blocked - totalUnits;
-        if (deficit > 0) {
-          overbookings.push({
-            date: toDateStr(day),
-            unitTypeName: group.name,
-            deficit,
-          });
-        }
-
+    const inactive = activeProfiles
+      .filter((p) => {
+        const last = lastActivity30d.get(p.id) ?? p.ambassadorRequestedAt ?? p.createdAt;
+        return last < inactiveSince;
+      })
+      .map((p) => {
+        const last = lastActivity30d.get(p.id) ?? p.ambassadorRequestedAt ?? p.createdAt;
         return {
-          date: toDateStr(day),
-          available,
-          reserved,
-          blocked,
-          isSoldOut: available === 0,
+          id: p.id,
+          name: `${p.firstName} ${p.lastName}`.trim(),
+          daysSinceActivity: daysSince(last),
+          lastActivityAt: last?.toISOString() ?? null,
         };
-      });
+      })
+      .sort((a, b) => b.daysSinceActivity - a.daysSinceActivity)
+      .slice(0, 15);
 
-      return { unitTypeName: group.name, unitTypeKey: group.key, totalUnits, days: dayCells };
-    });
+    const inactiveCount = activeProfiles.filter((p) => {
+      const last = lastActivity30d.get(p.id) ?? p.ambassadorRequestedAt ?? p.createdAt;
+      return last < inactiveSince;
+    }).length;
 
-    const summaryRow = days.map((day) => {
-      const date = toDateStr(day);
-      let totalAvailable = 0;
-      for (const row of rows) {
-        const cell = row.days.find((d) => d.date === date);
-        if (cell) totalAvailable += cell.available;
-      }
-      return { date, totalAvailable };
-    });
+    const leadsCreated = leads.length;
+    const attributedBookings = bookings.length + flexBookings.length;
+    const attributedGmv = roundMoney(
+      bookings.reduce((s, b) => s + decimalToNumber(b.totalAmount), 0) +
+        flexBookings.reduce((s, b) => s + decimalToNumber(b.totalAmount), 0),
+    );
+    const commissionsGenerated = roundMoney(
+      commissions.reduce((s, c) => s + decimalToNumber(c.commissionAmount), 0),
+    );
 
-    return { rows, summaryRow, overbookings };
+    return {
+      period,
+      summary: {
+        activeAmbassadors: activeInPeriod.size,
+        inactiveAmbassadors: inactiveCount,
+        newAmbassadors,
+        attributedBookings,
+        attributedGmv,
+        commissionsGenerated,
+        leadsCreated,
+        sessionConversionRate: conversionRate(totalSessionsConfirmed, totalSessionsStarted),
+      },
+      ranking,
+      inactive,
+    };
   }
 }
