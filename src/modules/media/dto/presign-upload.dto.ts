@@ -1,6 +1,6 @@
 import { IsString, IsIn, IsInt, Min, Max, MaxLength } from 'class-validator';
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 export class PresignUploadDto {
