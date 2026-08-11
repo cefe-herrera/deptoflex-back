@@ -7,6 +7,7 @@ import { AgencyTeamService } from './agency-team.service';
 import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-professional.dto';
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 import { ConfirmAmbassadorDocumentDto } from './dto/confirm-ambassador-document.dto';
+import { SendAmbassadorEmailDto } from './dto/send-ambassador-email.dto';
 import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
 import { CurrentUser, type CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -295,6 +296,21 @@ export class ProfessionalsController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   rejectDocumentation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.professionalsService.rejectDocumentation(id, user.id);
+  }
+
+  @Post(':id/send-email')
+  @Roles('ADMIN', 'OPERATOR')
+  @ApiOperation({
+    summary: 'Enviar email al embajador',
+    description: 'Envía un correo directo al email del embajador vía Resend. Solo ADMIN/OPERATOR.',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  sendEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: SendAmbassadorEmailDto,
+  ) {
+    return this.professionalsService.sendEmailToAmbassador(id, user.id, dto);
   }
 
   @Get(':id/activity')

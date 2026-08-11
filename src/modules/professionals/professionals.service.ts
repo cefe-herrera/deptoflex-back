@@ -21,10 +21,13 @@ import { UpdateProfessionalDto, AdminUpdateProfessionalDto } from './dto/update-
 import { RequestAmbassadorDto } from './dto/request-ambassador.dto';
 
 import { AgencyTeamMemberDto } from './dto/agency-team-member.dto';
+import { SendAmbassadorEmailDto } from './dto/send-ambassador-email.dto';
+import { EmailService } from '../email/email.service';
 import {
   getMissingAmbassadorDocTypes,
   isAmbassadorDocumentationComplete,
   getDocumentationReviewSummary,
+  getAmbassadorOperationalSummary,
 } from './ambassador-documents.util';
 
 
@@ -46,6 +49,8 @@ export class ProfessionalsService {
     private agencyTeamService: AgencyTeamService,
 
     private audit: AuditService,
+
+    private emailService: EmailService,
 
   ) {}
 
@@ -116,7 +121,17 @@ export class ProfessionalsService {
 
         take: limit,
 
-        include: { user: { select: { email: true, isActive: true } } },
+        include: {
+          user: {
+            select: {
+              email: true,
+              isActive: true,
+              userRoles: { select: { role: { select: { name: true } } } },
+            },
+          },
+          ambassadorDocuments: { select: { documentType: true } },
+          _count: { select: { agencyTeamMembers: true } },
+        },
 
         orderBy: { createdAt: 'desc' },
 
@@ -126,7 +141,42 @@ export class ProfessionalsService {
 
     ]);
 
-    return { items: items.map((p) => this.mapProfile(p)), total, page, limit };
+    return {
+      items: items.map((p) => {
+        const mapped = this.mapProfile(p);
+        const docTypes = p.ambassadorDocuments.map((d) => d.documentType);
+        const hasAmbassadorRole = p.user.userRoles.some((ur) => ur.role.name === 'AMBASSADOR');
+        const operational = getAmbassadorOperationalSummary({
+          status: p.status,
+          isVerified: p.isVerified,
+          ambassadorRequestedAt: p.ambassadorRequestedAt,
+          personType: p.personType,
+          documentationApprovedAt: p.documentationApprovedAt,
+          docTypes,
+          hasAmbassadorRole,
+          agencyTeamMembersCount: p._count.agencyTeamMembers,
+        });
+
+        const { ambassadorDocuments: _docs, _count: _countMeta, user, ...rest } = mapped as typeof mapped & {
+          ambassadorDocuments?: unknown;
+          _count?: unknown;
+          user: typeof p.user;
+        };
+
+        return {
+          ...rest,
+          user: {
+            email: user.email,
+            isActive: user.isActive,
+            hasAmbassadorRole,
+          },
+          adminSummary: operational,
+        };
+      }),
+      total,
+      page,
+      limit,
+    };
 
   }
 
@@ -808,6 +858,38 @@ export class ProfessionalsService {
 
     return suspended;
 
+  }
+
+  async sendEmailToAmbassador(id: string, actorId: string, dto: SendAmbassadorEmailDto) {
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { id },
+      include: { user: { select: { email: true } } },
+    });
+    if (!profile) throw new NotFoundException('Professional profile not found');
+
+    const recipientName = `${profile.firstName} ${profile.lastName}`.trim() || profile.user.email;
+    const sent = await this.emailService.sendAdminDirectEmail(
+      profile.user.email,
+      recipientName,
+      dto.subject,
+      dto.message,
+    );
+    if (!sent) {
+      throw new BadRequestException('No se pudo enviar el email. Verificá la configuración de Resend.');
+    }
+
+    await this.audit.log({
+      actorId,
+      entityType: 'ProfessionalProfile',
+      entityId: id,
+      action: AMBASSADOR_AUDIT_ACTIONS.ADMIN_EMAIL_SENT,
+      metadata: {
+        to: profile.user.email,
+        subject: dto.subject,
+      },
+    });
+
+    return { sent: true, to: profile.user.email };
   }
 
   /**

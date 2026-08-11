@@ -14,6 +14,7 @@ export const AMBASSADOR_AUDIT_ACTIONS = {
   REQUEST_SUSPENDED: 'AMBASSADOR_REQUEST_SUSPENDED',
   DOCUMENTATION_APPROVED: 'AMBASSADOR_DOCUMENTATION_APPROVED',
   DOCUMENTATION_REJECTED: 'AMBASSADOR_DOCUMENTATION_REJECTED',
+  ADMIN_EMAIL_SENT: 'AMBASSADOR_ADMIN_EMAIL_SENT',
 } as const;
 
 export type AmbassadorAuditAction =
@@ -29,6 +30,7 @@ const ACTION_LABELS: Record<string, string> = {
   [AMBASSADOR_AUDIT_ACTIONS.REQUEST_SUSPENDED]: 'Embajador suspendido',
   [AMBASSADOR_AUDIT_ACTIONS.DOCUMENTATION_APPROVED]: 'Documentación aprobada por admin',
   [AMBASSADOR_AUDIT_ACTIONS.DOCUMENTATION_REJECTED]: 'Documentación rechazada por admin',
+  [AMBASSADOR_AUDIT_ACTIONS.ADMIN_EMAIL_SENT]: 'Email enviado por admin',
 };
 
 export function labelForAmbassadorAction(action: string): string {

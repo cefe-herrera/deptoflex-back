@@ -214,6 +214,40 @@ export class EmailService {
         });
     }
 
+    async sendAdminDirectEmail(
+        email: string,
+        recipientName: string,
+        subject: string,
+        message: string,
+    ): Promise<boolean> {
+        const safeName = this.escapeHtml(recipientName);
+        const safeMessage = this.escapeHtml(message).replace(/\n/g, '<br>');
+        const normalizedSubject = subject.trim().toLowerCase().startsWith('weflex')
+            ? subject.trim()
+            : `Weflex - ${subject.trim()}`;
+
+        return this.send({
+            to: email,
+            subject: normalizedSubject,
+            html: this.layout(
+                subject.trim(),
+                `
+          <p>Hola ${safeName},</p>
+          <p>${safeMessage}</p>
+          <p style="color:#64748b;font-size:13px;margin-top:24px;">Este mensaje fue enviado por el equipo de Weflex.</p>
+        `,
+            ),
+        });
+    }
+
+    private escapeHtml(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
     private async send(payload: { to: string; subject: string; html: string }): Promise<boolean> {
         try {
             const { data, error } = await this.resend.emails.send({
