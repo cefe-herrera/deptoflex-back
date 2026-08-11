@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Min, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PropertyType, PropertyStatus } from '@prisma/client';
 
@@ -12,4 +12,5 @@ export class QueryPropertyFlexDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) bedrooms?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) bathrooms?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) maxMonthlyRate?: number;
+  @IsOptional() @IsIn(['createdAt', 'availability']) sortBy?: 'createdAt' | 'availability' = 'availability';
 }

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { findNextAvailableStart } from './flex-availability.util';
+import { findNextAvailableStart, type FlexBookedPeriodLike } from './flex-availability.util';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CreatePropertyFlexDto } from './dto/create-property-flex.dto';
 import { UpdatePropertyFlexDto } from './dto/update-property-flex.dto';
@@ -31,7 +31,18 @@ export class PropertyFlexService {
   }
 
   async findAll(query: QueryPropertyFlexDto) {
-    const { page = 1, limit = 20, companyId, status, type, city, bedrooms, bathrooms, maxMonthlyRate } = query;
+    const {
+      page = 1,
+      limit = 20,
+      companyId,
+      status,
+      type,
+      city,
+      bedrooms,
+      bathrooms,
+      maxMonthlyRate,
+      sortBy = 'availability',
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -45,22 +56,85 @@ export class PropertyFlexService {
       ...(maxMonthlyRate != null && { monthlyRate: { lte: String(maxMonthlyRate) } }),
     };
 
-    const [items, total] = await Promise.all([
-      this.prisma.propertyFlex.findMany({
+    const include = {
+      address: true,
+      images: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
+      pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' as const }, { minMonths: 'asc' as const }] },
+    };
+
+    const total = await this.prisma.propertyFlex.count({ where });
+
+    if (sortBy === 'availability') {
+      const allItems = await this.prisma.propertyFlex.findMany({
         where,
-        skip,
-        take: limit,
-        include: {
-          address: true,
-          images: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
-          pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
-        },
+        include,
         orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.propertyFlex.count({ where }),
-    ]);
+      });
+      const sorted = await this.enrichAndSortByAvailability(allItems);
+      const items = sorted.slice(skip, skip + limit);
+      return { items, total, page, limit };
+    }
+
+    const items = await this.prisma.propertyFlex.findMany({
+      where,
+      skip,
+      take: limit,
+      include,
+      orderBy: { createdAt: 'desc' },
+    });
 
     return { items, total, page, limit };
+  }
+
+  private async enrichAndSortByAvailability<T extends { id: string; minMonths: number | null }>(
+    items: T[],
+  ): Promise<Array<T & { availableFrom: string | null }>> {
+    if (items.length === 0) return [];
+
+    const from = new Date().toISOString().slice(0, 10);
+    const horizon = new Date();
+    horizon.setMonth(horizon.getMonth() + 18);
+    const to = horizon.toISOString().slice(0, 10);
+
+    const bookings = await this.prisma.flexBooking.findMany({
+      where: {
+        propertyFlexId: { in: items.map((item) => item.id) },
+        deletedAt: null,
+        status: { notIn: ['CANCELLED'] },
+        startDate: { lt: new Date(to) },
+        endDate: { gt: new Date(from) },
+      },
+      select: { propertyFlexId: true, startDate: true, endDate: true },
+      orderBy: { startDate: 'asc' },
+    });
+
+    const periodsByProperty = new Map<string, FlexBookedPeriodLike[]>();
+    for (const booking of bookings) {
+      const periods = periodsByProperty.get(booking.propertyFlexId) ?? [];
+      periods.push({
+        startDate: booking.startDate.toISOString().slice(0, 10),
+        endDate: booking.endDate.toISOString().slice(0, 10),
+      });
+      periodsByProperty.set(booking.propertyFlexId, periods);
+    }
+
+    const enriched = items.map((item) => {
+      const periods = periodsByProperty.get(item.id) ?? [];
+      const stayMonths = item.minMonths && item.minMonths > 0 ? item.minMonths : 1;
+      return {
+        ...item,
+        availableFrom: findNextAvailableStart(periods, stayMonths, 18),
+      };
+    });
+
+    enriched.sort((a, b) => {
+      if (a.availableFrom == null && b.availableFrom == null) return 0;
+      if (a.availableFrom == null) return 1;
+      if (b.availableFrom == null) return -1;
+      return a.availableFrom.localeCompare(b.availableFrom);
+    });
+
+    return enriched;
   }
 
   async findOne(id: string) {

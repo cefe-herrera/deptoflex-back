@@ -16,39 +16,25 @@ export class PublicCatalogService {
   ) {}
 
   async listFlex(query: QueryPublicFlexListDto) {
-    const { page = 1, limit = 50, city, bedrooms, bathrooms, maxMonthlyRate, type } = query;
-    const skip = (page - 1) * limit;
+    const { city, bedrooms, bathrooms, maxMonthlyRate, type, page, limit, sortBy } = query;
 
-    const where = {
-      deletedAt: null,
-      status: PropertyStatus.ACTIVE,
-      ...(type && { type }),
-      ...(city && { address: { city: { contains: city, mode: 'insensitive' as const } } }),
-      ...(bedrooms != null && { bedrooms }),
-      ...(bathrooms != null && { bathrooms }),
-      ...(maxMonthlyRate != null && { monthlyRate: { lte: String(maxMonthlyRate) } }),
-    };
-
-    const [items, total] = await Promise.all([
-      this.prisma.propertyFlex.findMany({
-        where,
-        skip,
-        take: limit,
-        include: {
-          address: true,
-          images: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
-          pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.propertyFlex.count({ where }),
-    ]);
-
-    return {
-      items: items.map(({ commissionRate: _c, deletedAt: _d, companyId: _co, ...safe }) => safe),
-      total,
+    const result = await this.propertyFlexService.findAll({
       page,
       limit,
+      city,
+      bedrooms,
+      bathrooms,
+      maxMonthlyRate,
+      type,
+      status: PropertyStatus.ACTIVE,
+      sortBy: sortBy ?? 'availability',
+    });
+
+    return {
+      items: result.items.map(({ commissionRate: _c, deletedAt: _d, companyId: _co, ...safe }) => safe),
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
     };
   }
 
