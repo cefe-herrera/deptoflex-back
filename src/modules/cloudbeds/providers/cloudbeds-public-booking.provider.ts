@@ -92,7 +92,7 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
   );
 
   /** Max concurrent upstream requests to Cloudbeds (shared across all operations). */
-  private readonly maxConcurrent = Number(process.env.CLOUDBEDS_MAX_CONCURRENT ?? 2);
+  private readonly maxConcurrent = Number(process.env.CLOUDBEDS_MAX_CONCURRENT ?? 3);
 
   /** Retryable upstream HTTP statuses (rate limits / transient errors). */
   private readonly retryableStatuses = new Set([429, 502, 503, 504]);
