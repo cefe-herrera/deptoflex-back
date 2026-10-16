@@ -7,6 +7,7 @@ import {
   QueryPublicPropertiesListDto,
   QueryPublicUnitsListDto,
 } from './dto/query-public-list.dto';
+import { propertySearchWhere, unitSearchWhere } from '../../common/catalog/catalog-search-filters';
 
 @Injectable()
 export class PublicCatalogService {
@@ -16,18 +17,10 @@ export class PublicCatalogService {
   ) {}
 
   async listFlex(query: QueryPublicFlexListDto) {
-    const { city, bedrooms, bathrooms, maxMonthlyRate, type, page, limit, sortBy } = query;
-
     const result = await this.propertyFlexService.findAll({
-      page,
-      limit,
-      city,
-      bedrooms,
-      bathrooms,
-      maxMonthlyRate,
-      type,
+      ...query,
       status: PropertyStatus.ACTIVE,
-      sortBy: sortBy ?? 'availability',
+      sortBy: query.sortBy ?? 'availability',
     });
 
     return {
@@ -39,14 +32,14 @@ export class PublicCatalogService {
   }
 
   async listProperties(query: QueryPublicPropertiesListDto) {
-    const { page = 1, limit = 100, city, type } = query;
+    const { page = 1, limit = 100, type } = query;
     const skip = (page - 1) * limit;
 
     const where = {
       deletedAt: null,
       status: PropertyStatus.ACTIVE,
       ...(type && { type }),
-      ...(city && { address: { city: { contains: city, mode: 'insensitive' as const } } }),
+      ...propertySearchWhere(query),
     };
 
     const [items, total] = await Promise.all([
@@ -79,6 +72,7 @@ export class PublicCatalogService {
       deletedAt: null,
       status: UnitStatus.ACTIVE,
       ...(rentalModality && { rentalModality }),
+      ...unitSearchWhere(query),
     };
 
     const [items, total] = await Promise.all([

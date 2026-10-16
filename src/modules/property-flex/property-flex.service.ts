@@ -5,6 +5,7 @@ import { CommissionRatesService } from '../commissions/commission-rates.service'
 import { CreatePropertyFlexDto } from './dto/create-property-flex.dto';
 import { UpdatePropertyFlexDto } from './dto/update-property-flex.dto';
 import { QueryPropertyFlexDto } from './dto/query-property-flex.dto';
+import { flexSearchWhere } from '../../common/catalog/catalog-search-filters';
 import { PropertyStatus } from '@prisma/client';
 
 @Injectable()
@@ -37,7 +38,6 @@ export class PropertyFlexService {
       companyId,
       status,
       type,
-      city,
       bedrooms,
       bathrooms,
       maxMonthlyRate,
@@ -50,10 +50,10 @@ export class PropertyFlexService {
       ...(companyId && { companyId }),
       ...(status && { status }),
       ...(type && { type }),
-      ...(city && { address: { city: { contains: city, mode: 'insensitive' } } }),
       ...(bedrooms != null && { bedrooms }),
       ...(bathrooms != null && { bathrooms }),
       ...(maxMonthlyRate != null && { monthlyRate: { lte: String(maxMonthlyRate) } }),
+      ...flexSearchWhere(query),
     };
 
     const include = {

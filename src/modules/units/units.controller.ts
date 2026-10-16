@@ -7,6 +7,7 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { SetAvailabilityDto } from './dto/set-availability.dto';
 import { SetPricingRulesDto } from './dto/set-pricing-rules.dto';
+import { QueryUnitsDto } from './dto/query-units.dto';
 import { MediaService } from '../media/media.service';
 import { PresignUploadDto } from '../media/dto/presign-upload.dto';
 import { ConfirmUploadDto } from '../media/dto/confirm-upload.dto';
@@ -37,21 +38,10 @@ export class UnitsController {
   @Get()
   @ApiOperation({
     summary: 'Listar unidades',
-    description: 'Devuelve unidades paginadas, con filtros opcionales por propiedad, estado y modalidad de alquiler.',
+    description: 'Devuelve unidades paginadas, con filtros por propiedad, estado, modalidad, ubicación, capacidad y comodidades.',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'propertyId', required: false, type: String, format: 'uuid' })
-  @ApiQuery({ name: 'status', required: false, enum: UnitStatus })
-  @ApiQuery({ name: 'rentalModality', required: false, enum: RentalModality })
-  findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
-    @Query('propertyId') propertyId?: string,
-    @Query('status') status?: UnitStatus,
-    @Query('rentalModality') rentalModality?: RentalModality,
-  ) {
-    return this.unitsService.findAll(+page, +limit, propertyId, status, rentalModality);
+  findAll(@Query() query: QueryUnitsDto) {
+    return this.unitsService.findAll(query);
   }
 
   @Get(':id')

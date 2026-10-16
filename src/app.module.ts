@@ -9,6 +9,7 @@ import r2Config from './config/r2.config';
 import emailConfig from './config/email.config';
 import notificationsConfig from './config/notifications.config';
 import mercadopagoConfig from './config/mercadopago.config';
+import aiConfig from './config/ai.config';
 import { validationSchema } from './config/validation.schema';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -34,6 +35,7 @@ import { ActivityModule } from './modules/activity/activity.module';
 import { PublicCatalogModule } from './modules/public-catalog/public-catalog.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AmbassadorsModule } from './modules/ambassadors/ambassadors.module';
+import { AiSearchModule } from './modules/ai-search/ai-search.module';
 import { AmbassadorAccessModule } from './common/services/ambassador-access.module';
 import { AuditModule } from './common/services/audit.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -43,7 +45,7 @@ import { RolesGuard } from './common/guards/roles.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig, mercadopagoConfig],
+      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig, mercadopagoConfig, aiConfig],
       validationSchema,
       validationOptions: { abortEarly: true },
     }),
@@ -79,6 +81,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PublicCatalogModule,
     PaymentsModule,
     AmbassadorsModule,
+    AiSearchModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

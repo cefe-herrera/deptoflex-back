@@ -4,6 +4,7 @@ import { CommissionRatesService } from '../commissions/commission-rates.service'
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { QueryPropertiesDto } from './dto/query-properties.dto';
+import { propertySearchWhere } from '../../common/catalog/catalog-search-filters';
 import { PropertyStatus } from '@prisma/client';
 
 @Injectable()
@@ -25,7 +26,7 @@ export class PropertiesService {
   }
 
   async findAll(query: QueryPropertiesDto) {
-    const { page = 1, limit = 20, companyId, status, type, city } = query;
+    const { page = 1, limit = 20, companyId, status, type } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -33,7 +34,7 @@ export class PropertiesService {
       ...(companyId && { companyId }),
       ...(status && { status }),
       ...(type && { type }),
-      ...(city && { address: { city: { contains: city, mode: 'insensitive' } } }),
+      ...propertySearchWhere(query),
     };
 
     const [items, total] = await Promise.all([
