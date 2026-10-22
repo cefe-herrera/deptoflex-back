@@ -47,4 +47,6 @@ export const validationSchema = Joi.object({
   AI_PROVIDER: Joi.string().valid('gemini').default('gemini'),
   AI_API_KEY: Joi.string().allow('').default(''),
   AI_MODEL: Joi.string().default('gemini-3.5-flash-lite'),
+
+  BOOKINGS_REQUIRE_APPROVED_AMBASSADOR: Joi.boolean().default(false),
 });

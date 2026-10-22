@@ -23,4 +23,6 @@ export default registerAs('app', () => ({
   frontendUrl: resolveFrontendUrl(),
   googleClientId: process.env.GOOGLE_CLIENT_ID,
   appleClientId: process.env.APPLE_CLIENT_ID,
+  /** Default de la política de reservas; el admin puede sobreescribirlo (PlatformSetting). */
+  bookingsRequireApprovedAmbassador: process.env.BOOKINGS_REQUIRE_APPROVED_AMBASSADOR?.trim().toLowerCase() === 'true',
 }));

@@ -38,6 +38,7 @@ import { AmbassadorsModule } from './modules/ambassadors/ambassadors.module';
 import { AiSearchModule } from './modules/ai-search/ai-search.module';
 import { AmbassadorAccessModule } from './common/services/ambassador-access.module';
 import { AuditModule } from './common/services/audit.module';
+import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 
@@ -58,6 +59,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PrismaModule,
     AmbassadorAccessModule,
     AuditModule,
+    PlatformSettingsModule,
     R2Module,
     AuthModule,
     UsersModule,

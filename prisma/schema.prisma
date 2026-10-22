@@ -208,6 +208,7 @@ model User {
   commissionSettlementsPaid     CommissionSettlement[]       @relation("CommissionSettlementPaidBy")
   documentationApprovals        ProfessionalProfile[]      @relation("DocumentationApprovedBy")
   agencyTeamMembership          AgencyTeamMember?
+  platformSettingsUpdated       PlatformSetting[]            @relation("PlatformSettingUpdatedBy")
 
   @@index([email])
   @@index([deletedAt])
@@ -1383,4 +1384,18 @@ model AgendaNote {
 
   @@index([contactId, createdAt])
   @@map("agenda_notes")
+}
+
+/// Configuración de plataforma editable desde el admin. Cada `key` tiene un
+/// default definido por variable de entorno; la fila solo existe si un admin
+/// lo sobreescribió (borrarla vuelve al default del env).
+model PlatformSetting {
+  key         String   @id @db.VarChar(100)
+  value       Json
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  updatedBy User? @relation("PlatformSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("platform_settings")
 }

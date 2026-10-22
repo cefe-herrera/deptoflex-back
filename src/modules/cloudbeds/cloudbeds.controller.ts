@@ -18,6 +18,8 @@ import {
   CurrentUser,
   type CurrentUserPayload,
 } from '../../common/decorators/current-user.decorator';
+import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
+import { PlatformSettingsService } from '../platform-settings/platform-settings.service';
 import { CloudbedsService } from './cloudbeds.service';
 import { ReservationIntentsService } from './reservation-intents.service';
 import { SearchAvailabilityDto } from './dto/search-availability.dto';
@@ -47,6 +49,7 @@ export class CloudbedsController {
   constructor(
     private readonly cloudbeds: CloudbedsService,
     private readonly intents: ReservationIntentsService,
+    private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   @Public()
@@ -87,17 +90,19 @@ export class CloudbedsController {
   @Public()
   @Throttle({ booking: { limit: 30, ttl: 60_000 } })
   @Post('booking/prepare')
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Prepara la reserva',
     description:
-      'Llama al endpoint público `booking/prepare` de Cloudbeds usando el `cartToken` obtenido en `booking/calculate-totals` y los datos del huésped. Devuelve el identificador de reserva y estado normalizados.',
+      'Llama al endpoint público `booking/prepare` de Cloudbeds usando el `cartToken` obtenido en `booking/calculate-totals` y los datos del huésped. Devuelve el identificador de reserva y estado normalizados. Si la política de reservas exige embajador aprobado, rechaza a quien no lo sea (401/403).',
   })
-  prepareBooking(
+  async prepareBooking(
     @Body() dto: PrepareBookingDto,
     @Req() req: Request,
     @CurrentUser() user?: CurrentUserPayload,
   ): Promise<PrepareBookingResult> {
+    await this.platformSettings.assertCanCreateBookings(user);
     return this.cloudbeds.prepareBooking(dto, requestLogContext(req, user));
   }
 
@@ -121,17 +126,19 @@ export class CloudbedsController {
   @Public()
   @Throttle({ booking: { limit: 10, ttl: 60_000 } })
   @Post('reservation-intents')
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Crear intención de reserva y obtener URL de redirección oficial',
     description:
-      'Re-consulta disponibilidad en Cloudbeds para reducir riesgo de precio/disponibilidad desactualizada, persiste una `ReservationIntent` con status PENDING y devuelve la URL del motor oficial de Cloudbeds donde el usuario debe finalizar la reserva. **Nuestro sistema nunca confirma reservas.** Las intents quedan EXPIRED automáticamente si no se usan dentro de la ventana configurada.',
+      'Re-consulta disponibilidad en Cloudbeds para reducir riesgo de precio/disponibilidad desactualizada, persiste una `ReservationIntent` con status PENDING y devuelve la URL del motor oficial de Cloudbeds donde el usuario debe finalizar la reserva. **Nuestro sistema nunca confirma reservas.** Las intents quedan EXPIRED automáticamente si no se usan dentro de la ventana configurada. Si la política de reservas exige embajador aprobado, rechaza a quien no lo sea (401/403).',
   })
-  createReservationIntent(
+  async createReservationIntent(
     @Body() dto: CreateReservationIntentDto,
     @Req() req: Request,
     @CurrentUser() user?: CurrentUserPayload,
   ) {
+    await this.platformSettings.assertCanCreateBookings(user);
     return this.intents.create(dto, {
       userId: user?.id,
       ipAddress: req.ip,
