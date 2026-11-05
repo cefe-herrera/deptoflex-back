@@ -1,10 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import {
-  FlexDepositRule,
-  FlexEntryCommissionRule,
-  PropertyFlexPricingPlan,
-} from '@prisma/client';
+import { FlexFeeRuleKind, Prisma, PropertyFlexPricingPlan } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { FlexFeeRulesService } from './flex-fee-rules.service';
+import { computeFeeAmount } from './flex-fee-rule.util';
 import { CreatePricingPlanDto } from './dto/create-pricing-plan.dto';
 import { UpdatePricingPlanDto } from './dto/update-pricing-plan.dto';
 
@@ -26,21 +24,34 @@ export interface FlexPricingQuote {
   usingLegacyPricing: boolean;
 }
 
+const PLAN_INCLUDE = { depositRule: true, entryCommissionRule: true } satisfies Prisma.PropertyFlexPricingPlanInclude;
+
+export type PricingPlanWithRules = Prisma.PropertyFlexPricingPlanGetPayload<{ include: typeof PLAN_INCLUDE }>;
+
 @Injectable()
 export class FlexPricingService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private feeRules: FlexFeeRulesService,
+  ) {}
 
-  async listPlans(propertyFlexId: string, activeOnly = false) {
+  async listPlans(propertyFlexId: string, activeOnly = false): Promise<PricingPlanWithRules[]> {
     await this.ensureProperty(propertyFlexId);
     return this.prisma.propertyFlexPricingPlan.findMany({
       where: { propertyFlexId, ...(activeOnly && { isActive: true }) },
       orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }],
+      include: PLAN_INCLUDE,
     });
   }
 
   async createPlan(propertyFlexId: string, dto: CreatePricingPlanDto) {
     await this.ensureProperty(propertyFlexId);
     this.validateMonthsRange(dto.minMonths, dto.maxMonths);
+    const depositRuleId = await this.feeRules.resolveRuleId(FlexFeeRuleKind.DEPOSIT, dto.depositRuleId);
+    const entryCommissionRuleId = await this.feeRules.resolveRuleId(
+      FlexFeeRuleKind.ENTRY_COMMISSION,
+      dto.entryCommissionRuleId,
+    );
 
     const plan = await this.prisma.propertyFlexPricingPlan.create({
       data: {
@@ -54,13 +65,13 @@ export class FlexPricingService {
         rentIncludesExpenses: dto.rentIncludesExpenses ?? false,
         rentIncludesUtilities: dto.rentIncludesUtilities ?? false,
         includesLinens: dto.includesLinens ?? false,
-        depositRule: dto.depositRule ?? FlexDepositRule.THIRD_OF_MONTH,
-        ...(dto.customDepositAmount != null && { customDepositAmount: String(dto.customDepositAmount) }),
-        entryCommissionRule: dto.entryCommissionRule ?? FlexEntryCommissionRule.NONE,
+        depositRuleId,
+        entryCommissionRuleId,
         conditionsText: dto.conditionsText ?? null,
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
       },
+      include: PLAN_INCLUDE,
     });
 
     await this.syncPropertyPriceFromPlans(propertyFlexId);
@@ -73,6 +84,13 @@ export class FlexPricingService {
       const existing = await this.prisma.propertyFlexPricingPlan.findUniqueOrThrow({ where: { id: planId } });
       this.validateMonthsRange(dto.minMonths ?? existing.minMonths, dto.maxMonths ?? existing.maxMonths ?? undefined);
     }
+    // En update, undefined = no tocar (no aplicar la regla por defecto).
+    const depositRuleId = dto.depositRuleId !== undefined
+      ? await this.feeRules.resolveRuleId(FlexFeeRuleKind.DEPOSIT, dto.depositRuleId)
+      : undefined;
+    const entryCommissionRuleId = dto.entryCommissionRuleId !== undefined
+      ? await this.feeRules.resolveRuleId(FlexFeeRuleKind.ENTRY_COMMISSION, dto.entryCommissionRuleId)
+      : undefined;
 
     const plan = await this.prisma.propertyFlexPricingPlan.update({
       where: { id: planId },
@@ -86,15 +104,13 @@ export class FlexPricingService {
         ...(dto.rentIncludesExpenses !== undefined && { rentIncludesExpenses: dto.rentIncludesExpenses }),
         ...(dto.rentIncludesUtilities !== undefined && { rentIncludesUtilities: dto.rentIncludesUtilities }),
         ...(dto.includesLinens !== undefined && { includesLinens: dto.includesLinens }),
-        ...(dto.depositRule && { depositRule: dto.depositRule }),
-        ...(dto.customDepositAmount !== undefined && {
-          customDepositAmount: dto.customDepositAmount != null ? String(dto.customDepositAmount) : null,
-        }),
-        ...(dto.entryCommissionRule && { entryCommissionRule: dto.entryCommissionRule }),
+        ...(depositRuleId !== undefined && { depositRuleId }),
+        ...(entryCommissionRuleId !== undefined && { entryCommissionRuleId }),
         ...(dto.conditionsText !== undefined && { conditionsText: dto.conditionsText || null }),
         ...(dto.sortOrder != null && { sortOrder: dto.sortOrder }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
+      include: PLAN_INCLUDE,
     });
 
     await this.syncPropertyPriceFromPlans(propertyFlexId);
@@ -121,7 +137,7 @@ export class FlexPricingService {
       const totalAmount = monthlyRent * totalMonths;
       const depositAmount = property.depositAmount != null
         ? Number(property.depositAmount)
-        : this.calculateDepositAmount(monthlyRent, FlexDepositRule.THIRD_OF_MONTH, null);
+        : Math.round((monthlyRent / 3) * 100) / 100;
       const reservationPaymentAmount = this.reservationPaymentFromProperty(property);
 
       return {
@@ -151,12 +167,8 @@ export class FlexPricingService {
     }
 
     const monthlyRent = Number(plan.monthlyRent);
-    const depositAmount = this.calculateDepositAmount(
-      monthlyRent,
-      plan.depositRule,
-      plan.customDepositAmount != null ? Number(plan.customDepositAmount) : null,
-    );
-    const entryCommissionAmount = this.calculateEntryCommission(monthlyRent, plan.entryCommissionRule);
+    const depositAmount = computeFeeAmount(plan.depositRule, monthlyRent);
+    const entryCommissionAmount = computeFeeAmount(plan.entryCommissionRule, monthlyRent);
     const reservationPaymentAmount = this.reservationPaymentFromProperty(property);
 
     return {
@@ -178,11 +190,11 @@ export class FlexPricingService {
     };
   }
 
-  resolvePlan(
-    plans: PropertyFlexPricingPlan[],
+  resolvePlan<T extends PropertyFlexPricingPlan>(
+    plans: T[],
     totalMonths: number,
     pricingPlanId?: string,
-  ): PropertyFlexPricingPlan | null {
+  ): T | null {
     if (pricingPlanId) {
       const byId = plans.find((p) => p.id === pricingPlanId && p.isActive);
       if (!byId) return null;
@@ -201,31 +213,6 @@ export class FlexPricingService {
     if (totalMonths < plan.minMonths) return false;
     if (plan.maxMonths != null && totalMonths > plan.maxMonths) return false;
     return true;
-  }
-
-  calculateDepositAmount(
-    monthlyRent: number,
-    rule: FlexDepositRule,
-    customAmount: number | null,
-  ): number {
-    if (rule === FlexDepositRule.CUSTOM && customAmount != null) return customAmount;
-    if (rule === FlexDepositRule.ONE_MONTH_RENT) return monthlyRent;
-    return Math.round((monthlyRent / 3) * 100) / 100;
-  }
-
-  calculateEntryCommission(monthlyRent: number, rule: FlexEntryCommissionRule): number {
-    switch (rule) {
-      case FlexEntryCommissionRule.THIRD_FIRST_MONTH:
-        return Math.round((monthlyRent / 3) * 100) / 100;
-      case FlexEntryCommissionRule.HALF_FIRST_MONTH:
-        return Math.round((monthlyRent / 2) * 100) / 100;
-      case FlexEntryCommissionRule.SEVENTY_FIRST_MONTH:
-        return Math.round(monthlyRent * 0.7 * 100) / 100;
-      case FlexEntryCommissionRule.FULL_FIRST_MONTH:
-        return monthlyRent;
-      default:
-        return 0;
-    }
   }
 
   reservationPaymentFromProperty(property: { reservationPaymentAmount?: unknown | null }): number {

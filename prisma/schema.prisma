@@ -989,18 +989,38 @@ enum FlexPricingPlanCode {
   YEAR_2
 }
 
-enum FlexDepositRule {
-  THIRD_OF_MONTH
-  ONE_MONTH_RENT
-  CUSTOM
+enum FlexFeeRuleKind {
+  DEPOSIT
+  ENTRY_COMMISSION
 }
 
-enum FlexEntryCommissionRule {
+/// NONE: sin cargo · RENT_FRACTION: alquiler mensual × numerator / denominator · FIXED: fixedAmount
+enum FlexFeeRuleMode {
   NONE
-  THIRD_FIRST_MONTH
-  HALF_FIRST_MONTH
-  SEVENTY_FIRST_MONTH
-  FULL_FIRST_MONTH
+  RENT_FRACTION
+  FIXED
+}
+
+/// Catálogo global de reglas de depósito / comisión de ingreso reutilizables por los planes flex.
+model FlexFeeRule {
+  id          String          @id @default(uuid()) @db.Uuid
+  kind        FlexFeeRuleKind
+  name        String          @db.VarChar(120)
+  mode        FlexFeeRuleMode
+  numerator   Decimal?        @db.Decimal(10, 4)
+  denominator Int?            @db.SmallInt
+  fixedAmount Decimal?        @map("fixed_amount") @db.Decimal(12, 2)
+  isDefault   Boolean         @default(false) @map("is_default")
+  isActive    Boolean         @default(true) @map("is_active")
+  sortOrder   Int             @default(0) @map("sort_order") @db.SmallInt
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  depositPlans    PropertyFlexPricingPlan[] @relation("PlanDepositRule")
+  commissionPlans PropertyFlexPricingPlan[] @relation("PlanEntryCommissionRule")
+
+  @@index([kind, isActive])
+  @@map("flex_fee_rules")
 }
 
 model PropertyFlex {
@@ -1058,9 +1078,8 @@ model PropertyFlexPricingPlan {
   rentIncludesUtilities Boolean            @default(false) @map("rent_includes_utilities")
   includesLinens        Boolean            @default(false) @map("includes_linens")
 
-  depositRule           FlexDepositRule          @default(THIRD_OF_MONTH) @map("deposit_rule")
-  customDepositAmount   Decimal?                 @map("custom_deposit_amount") @db.Decimal(10, 2)
-  entryCommissionRule   FlexEntryCommissionRule  @default(NONE) @map("entry_commission_rule")
+  depositRuleId         String?                  @map("deposit_rule_id") @db.Uuid
+  entryCommissionRuleId String?                  @map("entry_commission_rule_id") @db.Uuid
 
   conditionsText String?  @map("conditions_text") @db.Text
   sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
@@ -1068,8 +1087,10 @@ model PropertyFlexPricingPlan {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  propertyFlex PropertyFlex  @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
-  bookings     FlexBooking[]
+  propertyFlex        PropertyFlex  @relation(fields: [propertyFlexId], references: [id], onDelete: Cascade)
+  depositRule         FlexFeeRule?  @relation("PlanDepositRule", fields: [depositRuleId], references: [id], onDelete: Restrict)
+  entryCommissionRule FlexFeeRule?  @relation("PlanEntryCommissionRule", fields: [entryCommissionRuleId], references: [id], onDelete: Restrict)
+  bookings            FlexBooking[]
 
   @@unique([propertyFlexId, code])
   @@index([propertyFlexId, isActive])

@@ -112,7 +112,11 @@ export class PublicCatalogService {
         address: true,
         amenities: { include: { amenity: true } },
         images: { include: { mediaFile: true }, orderBy: { sortOrder: 'asc' } },
-        pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
+        pricingPlans: {
+          where: { isActive: true },
+          orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }],
+          include: { depositRule: true, entryCommissionRule: true },
+        },
       },
     });
     if (!propertyFlex) throw new NotFoundException('PropertyFlex not found');

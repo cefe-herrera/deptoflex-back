@@ -1,9 +1,7 @@
 import {
-  IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min,
+  IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, MaxLength, Min, ValidateIf,
 } from 'class-validator';
-import {
-  FlexDepositRule, FlexEntryCommissionRule, FlexPricingPlanCode,
-} from '@prisma/client';
+import { FlexPricingPlanCode } from '@prisma/client';
 
 export class CreatePricingPlanDto {
   @IsEnum(FlexPricingPlanCode) code: FlexPricingPlanCode;
@@ -17,9 +15,10 @@ export class CreatePricingPlanDto {
   @IsOptional() @IsBoolean() rentIncludesUtilities?: boolean;
   @IsOptional() @IsBoolean() includesLinens?: boolean;
 
-  @IsOptional() @IsEnum(FlexDepositRule) depositRule?: FlexDepositRule;
-  @IsOptional() @IsNumber() @Min(0) customDepositAmount?: number;
-  @IsOptional() @IsEnum(FlexEntryCommissionRule) entryCommissionRule?: FlexEntryCommissionRule;
+  /** Regla del catálogo `flex-fee-rules`. Omitido → regla por defecto; null → sin depósito. */
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() depositRuleId?: string | null;
+  /** Regla del catálogo `flex-fee-rules`. Omitido → regla por defecto; null → sin comisión. */
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() entryCommissionRuleId?: string | null;
 
   @IsOptional() @IsString() conditionsText?: string;
   @IsOptional() @IsInt() sortOrder?: number;

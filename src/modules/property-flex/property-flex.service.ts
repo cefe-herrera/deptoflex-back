@@ -59,7 +59,11 @@ export class PropertyFlexService {
     const include = {
       address: true,
       images: { where: { isPrimary: true }, include: { mediaFile: true }, take: 1 },
-      pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' as const }, { minMonths: 'asc' as const }] },
+      pricingPlans: {
+        where: { isActive: true },
+        orderBy: [{ sortOrder: 'asc' as const }, { minMonths: 'asc' as const }],
+        include: { depositRule: true, entryCommissionRule: true },
+      },
     };
 
     const total = await this.prisma.propertyFlex.count({ where });
@@ -144,7 +148,11 @@ export class PropertyFlexService {
         address: true,
         amenities: { include: { amenity: true } },
         images: { include: { mediaFile: true }, orderBy: { sortOrder: 'asc' } },
-        pricingPlans: { where: { isActive: true }, orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }] },
+        pricingPlans: {
+          where: { isActive: true },
+          orderBy: [{ sortOrder: 'asc' }, { minMonths: 'asc' }],
+          include: { depositRule: true, entryCommissionRule: true },
+        },
       },
     });
     if (!propertyFlex) throw new NotFoundException('PropertyFlex not found');
