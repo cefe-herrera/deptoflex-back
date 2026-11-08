@@ -48,5 +48,9 @@ export const validationSchema = Joi.object({
   AI_API_KEY: Joi.string().allow('').default(''),
   AI_MODEL: Joi.string().default('gemini-3.5-flash-lite'),
 
+  WESPEAK_BASE_URL: Joi.string().uri().default('https://chat.wespeak.pro/api/webchat'),
+  WESPEAK_WIDGET_ID: Joi.string().allow('').default(''),
+  WESPEAK_TOKEN_KEY: Joi.string().allow('').default(''),
+
   BOOKINGS_REQUIRE_APPROVED_AMBASSADOR: Joi.boolean().default(false),
 });

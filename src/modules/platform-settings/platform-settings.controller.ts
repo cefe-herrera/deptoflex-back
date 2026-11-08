@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
 } from '../../common/decorators/current-user.decorator';
 import { PlatformSettingsService } from './platform-settings.service';
 import { UpdateBookingPolicyDto } from './dto/update-booking-policy.dto';
+import { UpdateUiVisibilityDto } from './dto/update-ui-visibility.dto';
 
 @ApiTags('Platform settings')
 @ApiBearerAuth('access-token')
@@ -40,6 +42,41 @@ export class PlatformSettingsController {
       dto.requireApprovedAmbassador,
       user.id,
     );
+  }
+
+  @Get('admin/settings/ui-visibility')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Visibilidad de elementos de la interfaz',
+    description:
+      'Si se muestran el botón "Soporte Koli" del menú y el chat del asistente.',
+  })
+  getUiVisibilityAdmin() {
+    return this.settings.getUiVisibility();
+  }
+
+  @Patch('admin/settings/ui-visibility')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Mostrar u ocultar elementos de la interfaz',
+    description: 'Solo se cambian los campos enviados.',
+  })
+  updateUiVisibility(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: UpdateUiVisibilityDto,
+  ) {
+    return this.settings.setUiVisibility(dto, user.id);
+  }
+
+  @Get('settings/ui-visibility')
+  @Public()
+  @ApiOperation({
+    summary: 'Visibilidad de elementos de la interfaz (lectura pública)',
+    description:
+      'La usa el front para mostrar u ocultar el botón de soporte y el chat del asistente. También para invitados.',
+  })
+  getUiVisibility() {
+    return this.settings.getUiVisibility();
   }
 
   @Get('settings/booking-access')

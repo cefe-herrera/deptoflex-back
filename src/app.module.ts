@@ -10,6 +10,7 @@ import emailConfig from './config/email.config';
 import notificationsConfig from './config/notifications.config';
 import mercadopagoConfig from './config/mercadopago.config';
 import aiConfig from './config/ai.config';
+import wespeakConfig from './config/wespeak.config';
 import { validationSchema } from './config/validation.schema';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -36,6 +37,7 @@ import { PublicCatalogModule } from './modules/public-catalog/public-catalog.mod
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AmbassadorsModule } from './modules/ambassadors/ambassadors.module';
 import { AiSearchModule } from './modules/ai-search/ai-search.module';
+import { AssistantChatModule } from './modules/assistant-chat/assistant-chat.module';
 import { AmbassadorAccessModule } from './common/services/ambassador-access.module';
 import { AuditModule } from './common/services/audit.module';
 import { PlatformSettingsModule } from './modules/platform-settings/platform-settings.module';
@@ -46,7 +48,7 @@ import { RolesGuard } from './common/guards/roles.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig, mercadopagoConfig, aiConfig],
+      load: [appConfig, authConfig, r2Config, emailConfig, notificationsConfig, mercadopagoConfig, aiConfig, wespeakConfig],
       validationSchema,
       validationOptions: { abortEarly: true },
     }),
@@ -84,6 +86,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     PaymentsModule,
     AmbassadorsModule,
     AiSearchModule,
+    AssistantChatModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

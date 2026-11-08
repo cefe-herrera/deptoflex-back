@@ -209,6 +209,8 @@ model User {
   documentationApprovals        ProfessionalProfile[]      @relation("DocumentationApprovedBy")
   agencyTeamMembership          AgencyTeamMember?
   platformSettingsUpdated       PlatformSetting[]            @relation("PlatformSettingUpdatedBy")
+  assistantChatSession          AssistantChatSession?
+  assistantChatMessages         AssistantChatMessage[]
 
   @@index([email])
   @@index([deletedAt])
@@ -1419,4 +1421,63 @@ model PlatformSetting {
   updatedBy User? @relation("PlatformSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("platform_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASISTENTE (WeSpeak)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Sesión de cada usuario con el asistente de WeSpeak. El token se guarda cifrado y nunca sale del back.
+model AssistantChatSession {
+  userId         String    @id @map("user_id") @db.Uuid
+  /// Hilo actual de Weflex. "Nueva conversación" lo cambia; los hilos viejos quedan guardados.
+  threadId       String    @default(uuid()) @map("thread_id") @db.Uuid
+  wespeakToken   String?   @map("wespeak_token") @db.Text
+  conversationId String?   @map("conversation_id") @db.VarChar(100)
+  cursor         String?   @db.VarChar(255)
+  assistantName  String    @default("Asistente") @map("assistant_name") @db.VarChar(100)
+  /// Canal de tiempo real (Scaledrone) de la conversación. Solo sirve para escuchar; el token no sale del back.
+  realtimeChannelId String? @map("realtime_channel_id") @db.VarChar(100)
+  realtimeRoom      String? @map("realtime_room") @db.VarChar(255)
+  /// Última consulta a WeSpeak; sirve de lock para no consultar más de una vez cada 4 s entre instancias.
+  lastPolledAt   DateTime? @map("last_polled_at") @db.Timestamptz
+  /// Bloqueo por 429 (Retry-After).
+  blockedUntil   DateTime? @map("blocked_until") @db.Timestamptz
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("assistant_chat_sessions")
+}
+
+model AssistantChatMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  threadId       String   @map("thread_id") @db.Uuid
+  /// id del mensaje en WeSpeak (null mientras el envío no se confirmó).
+  externalId     String?  @map("external_id") @db.VarChar(100)
+  /// UUID del cliente; permite reintentar sin duplicar.
+  clientMsgId    String?  @map("client_msg_id") @db.Uuid
+  conversationId String?  @map("conversation_id") @db.VarChar(100)
+  /// guest | bot | agent
+  role           String   @db.VarChar(20)
+  /// reply | notice
+  kind           String   @default("reply") @db.VarChar(20)
+  text           String   @default("") @db.Text
+  /// image / carousel / location tal como los manda WeSpeak.
+  attachments    Json?
+  /// sent | pending | failed
+  status         String   @default("sent") @db.VarChar(20)
+  error          String?  @db.VarChar(300)
+  sentAt         DateTime @map("sent_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, externalId])
+  @@unique([userId, clientMsgId])
+  @@index([userId, threadId, sentAt])
+  @@map("assistant_chat_messages")
 }

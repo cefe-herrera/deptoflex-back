@@ -11,7 +11,28 @@ import type { CurrentUserPayload } from '../../common/decorators/current-user.de
 
 export const PLATFORM_SETTING_KEYS = {
   BOOKINGS_REQUIRE_APPROVED_AMBASSADOR: 'bookings.requireApprovedAmbassador',
+  UI_SUPPORT_BUTTON_VISIBLE: 'ui.supportButtonVisible',
+  UI_ASSISTANT_CHAT_VISIBLE: 'ui.assistantChatVisible',
 } as const;
+
+/** Elementos de la interfaz que el admin puede mostrar u ocultar. */
+export interface UiVisibility {
+  /** Botón "Soporte Koli" (WhatsApp) del menú lateral. */
+  supportButton: boolean;
+  /** Chat del asistente (botón flotante y panel). */
+  assistantChat: boolean;
+}
+
+/** Valores cuando el admin todavía no tocó nada: Koli oculto, chat del asistente visible. */
+export const UI_VISIBILITY_DEFAULTS: UiVisibility = {
+  supportButton: false,
+  assistantChat: true,
+};
+
+const UI_VISIBILITY_KEYS: Record<keyof UiVisibility, string> = {
+  supportButton: PLATFORM_SETTING_KEYS.UI_SUPPORT_BUTTON_VISIBLE,
+  assistantChat: PLATFORM_SETTING_KEYS.UI_ASSISTANT_CHAT_VISIBLE,
+};
 
 export interface BookingPolicy {
   requireApprovedAmbassador: boolean;
@@ -107,6 +128,57 @@ export class PlatformSettingsService {
         },
         to: { value: next.requireApprovedAmbassador, source: next.source },
       },
+    });
+    return next;
+  }
+
+  /** Visibilidad de elementos de la interfaz (lo guardado por el admin, o el default). */
+  async getUiVisibility(): Promise<UiVisibility> {
+    const rows = await this.prisma.platformSetting.findMany({
+      where: { key: { in: Object.values(UI_VISIBILITY_KEYS) } },
+      select: { key: true, value: true },
+    });
+    const byKey = new Map(rows.map((r) => [r.key, r.value]));
+    const read = (field: keyof UiVisibility) => {
+      const v = byKey.get(UI_VISIBILITY_KEYS[field]);
+      return typeof v === 'boolean' ? v : UI_VISIBILITY_DEFAULTS[field];
+    };
+    return {
+      supportButton: read('supportButton'),
+      assistantChat: read('assistantChat'),
+    };
+  }
+
+  /** Actualiza solo los campos enviados y deja registro en la auditoría. */
+  async setUiVisibility(
+    changes: Partial<UiVisibility>,
+    actorId: string,
+  ): Promise<UiVisibility> {
+    const previous = await this.getUiVisibility();
+    const fields = (
+      Object.keys(UI_VISIBILITY_KEYS) as (keyof UiVisibility)[]
+    ).filter((f) => typeof changes[f] === 'boolean');
+    if (!fields.length) return previous;
+
+    await this.prisma.$transaction(
+      fields.map((f) => {
+        const key = UI_VISIBILITY_KEYS[f];
+        const value = changes[f] as boolean;
+        return this.prisma.platformSetting.upsert({
+          where: { key },
+          create: { key, value, updatedById: actorId },
+          update: { value, updatedById: actorId },
+        });
+      }),
+    );
+
+    const next = await this.getUiVisibility();
+    await this.audit.log({
+      actorId,
+      entityType: 'PlatformSetting',
+      entityId: 'ui.visibility',
+      action: 'PLATFORM_SETTING_UPDATED',
+      metadata: { from: { ...previous }, to: { ...next } },
     });
     return next;
   }
