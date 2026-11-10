@@ -438,6 +438,7 @@ model Property {
   bookings              Booking[]
   ambassadorOverrides   AmbassadorPropertyCommission[]
   externalRequests      ExternalRequest[]
+  partnerBookingRequests PartnerBookingRequest[]
 
   @@index([status])
   @@index([companyId])
@@ -1512,6 +1513,7 @@ model ApiClient {
   keys        ApiKey[]
   members     ApiClientMember[]
   invitations ApiClientInvitation[]
+  bookingRequests PartnerBookingRequest[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1612,4 +1614,78 @@ model ApiClientInvitation {
   @@index([clientId])
   @@index([email])
   @@map("api_client_invitations")
+}
+
+/// Estado de una solicitud de reserva de un partner.
+/// PENDING → CONFIRMED (el admin la creó en Cloudbeds) | REJECTED.
+/// PENDING → CANCELLED (el partner la cancela antes de que se cree).
+/// CONFIRMED → CANCELLATION_REQUESTED → CANCELLED (el admin la canceló en Cloudbeds).
+enum PartnerBookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLATION_REQUESTED
+  CANCELLED
+}
+
+/// Solicitud de reserva enviada por una organización de la Partner API.
+/// No se crea en Cloudbeds automáticamente: un admin la carga a mano con estos datos.
+model PartnerBookingRequest {
+  id                String               @id @default(uuid()) @db.Uuid
+  clientId          String               @map("client_id") @db.Uuid
+  apiKeyId          String               @map("api_key_id") @db.Uuid
+  /// Referencia propia del partner (idempotencia: única por organización).
+  externalReference String?              @map("external_reference") @db.VarChar(100)
+  status            PartnerBookingStatus @default(PENDING)
+
+  propertyId String   @map("property_id") @db.Uuid
+  roomTypeId String   @map("room_type_id") @db.VarChar(50)
+  roomName   String?  @map("room_name") @db.VarChar(200)
+  rateId     String?  @map("rate_id") @db.VarChar(50)
+  checkin    DateTime @db.Date
+  checkout   DateTime @db.Date
+  nights     Int      @db.SmallInt
+  adults     Int      @db.SmallInt
+  children   Int      @default(0) @db.SmallInt
+
+  guestFirstName   String  @map("guest_first_name") @db.VarChar(100)
+  guestLastName    String  @map("guest_last_name") @db.VarChar(100)
+  guestEmail       String  @map("guest_email") @db.VarChar(255)
+  guestPhone       String  @map("guest_phone") @db.VarChar(40)
+  guestDocument    String? @map("guest_document") @db.VarChar(40)
+  guestNationality String? @map("guest_nationality") @db.VarChar(60)
+  notes            String? @db.Text
+
+  currency          String   @db.VarChar(3)
+  /// Total de la reserva: nuestra cotización (totalAmount de /partner/availability).
+  finalPrice        Decimal  @map("final_price") @db.Decimal(12, 2)
+  /// Comisión que el partner le cobró al huésped como seña y se queda.
+  partnerCommission Decimal  @map("partner_commission") @db.Decimal(12, 2)
+  /// finalPrice - partnerCommission: lo que Weflex le cobra al huésped.
+  netPrice          Decimal  @map("net_price") @db.Decimal(12, 2)
+  /// Nuestro precio total cotizado al momento de la solicitud (null si no se pudo cotizar).
+  quotedPrice       Decimal? @map("quoted_price") @db.Decimal(12, 2)
+  /// true si finalPrice no coincide con quotedPrice: el admin debe revisarlo.
+  priceMismatch     Boolean  @default(false) @map("price_mismatch")
+
+  cloudbedsReservationId  String?   @map("cloudbeds_reservation_id") @db.VarChar(100)
+  adminNotes              String?   @map("admin_notes") @db.Text
+  rejectionReason         String?   @map("rejection_reason") @db.Text
+  cancellationReason      String?   @map("cancellation_reason") @db.Text
+  confirmedAt             DateTime? @map("confirmed_at") @db.Timestamptz
+  rejectedAt              DateTime? @map("rejected_at") @db.Timestamptz
+  cancellationRequestedAt DateTime? @map("cancellation_requested_at") @db.Timestamptz
+  cancelledAt             DateTime? @map("cancelled_at") @db.Timestamptz
+  handledById             String?   @map("handled_by_id") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  client   ApiClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  property Property  @relation(fields: [propertyId], references: [id])
+
+  @@unique([clientId, externalReference])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([clientId, createdAt(sort: Desc)])
+  @@index([propertyId])
+  @@map("partner_booking_requests")
 }

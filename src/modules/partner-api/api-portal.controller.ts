@@ -30,6 +30,8 @@ import {
   ChangeApiMemberRoleDto,
   InviteApiMemberDto,
 } from './dto/api-organization.dto';
+import { ListPartnerBookingsQueryDto } from './dto/partner-booking.dto';
+import { PartnerBookingsService } from './partner-bookings.service';
 
 /**
  * Panel de la organización cliente de la API (usuarios con membresía).
@@ -42,7 +44,18 @@ export class ApiPortalController {
   constructor(
     private readonly org: ApiOrganizationService,
     private readonly clients: ApiClientsService,
+    private readonly bookings: PartnerBookingsService,
   ) {}
+
+  @Get('bookings')
+  @ApiOperation({ summary: 'Solicitudes de reserva de la organización' })
+  async listBookings(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() query: ListPartnerBookingsQueryDto,
+  ) {
+    const m = await this.org.requireMembership(user.id);
+    return this.bookings.listForClient(m.client.id, query);
+  }
 
   @Get('me')
   @ApiOperation({ summary: 'Mi organización y mi rol' })

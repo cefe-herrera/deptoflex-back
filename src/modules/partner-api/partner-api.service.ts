@@ -124,6 +124,7 @@ export class PartnerApiService {
       stale: meta.stale === true,
       rooms: result.rooms.map((r) => ({
         roomTypeId: r.roomTypeId,
+        rateId: r.rateId,
         name: r.name,
         maxGuests: r.maxGuests,
         maxAdults: r.maxAdults,
