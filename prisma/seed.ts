@@ -8,6 +8,7 @@ async function main() {
     { id: 2, name: 'OPERATOR', description: 'Operador con acceso a gestión de propiedades' },
     { id: 3, name: 'USER', description: 'Usuario registrado sin rol de embajador' },
     { id: 4, name: 'AMBASSADOR', description: 'Embajador aprobado' },
+    { id: 5, name: 'API_CLIENT', description: 'Usuario de una organización cliente de la API de disponibilidad' },
   ];
 
   for (const role of roles) {

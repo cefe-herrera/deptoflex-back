@@ -60,6 +60,7 @@ async function bootstrap() {
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       'access-token',
     )
+    .addApiKey({ type: 'apiKey', in: 'header', name: 'X-Api-Key' }, 'api-key')
     .addServer('/api/v1')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);

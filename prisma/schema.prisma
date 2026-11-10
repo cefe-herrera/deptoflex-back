@@ -211,6 +211,7 @@ model User {
   platformSettingsUpdated       PlatformSetting[]            @relation("PlatformSettingUpdatedBy")
   assistantChatSession          AssistantChatSession?
   assistantChatMessages         AssistantChatMessage[]
+  apiClientMembership           ApiClientMember?
 
   @@index([email])
   @@index([deletedAt])
@@ -1480,4 +1481,135 @@ model AssistantChatMessage {
   @@unique([userId, clientMsgId])
   @@index([userId, threadId, sentAt])
   @@map("assistant_chat_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARTNER API (terceros que consultan disponibilidad de propiedades temporales)
+//
+// Un ApiClient es un tercero (no ligado a CompanyProfile). Cada cliente tiene
+// una o más ApiKey; de la key solo se guarda el hash sha256 y un prefijo visible.
+// Cada request autenticada queda en ApiUsageEvent para métricas de uso.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ApiClientStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model ApiClient {
+  id           String          @id @default(uuid()) @db.Uuid
+  name         String          @db.VarChar(200)
+  description  String?         @db.Text
+  contactEmail String          @map("contact_email") @db.VarChar(255)
+  status       ApiClientStatus @default(ACTIVE)
+  /// Requests por minuto para todo el cliente (sumando sus keys). NULL = sin límite.
+  rpmLimit     Int?            @map("rpm_limit")
+  createdById  String?         @map("created_by_id") @db.Uuid
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime?       @map("deleted_at") @db.Timestamptz
+
+  keys        ApiKey[]
+  members     ApiClientMember[]
+  invitations ApiClientInvitation[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("api_clients")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  clientId    String    @map("client_id") @db.Uuid
+  name        String    @db.VarChar(100)
+  /// Primeros caracteres de la key, para identificarla en la UI (ej. "dfx_a1B2c3D4").
+  prefix      String    @db.VarChar(20)
+  /// sha256 hex de la key completa. La key en claro nunca se persiste.
+  keyHash     String    @unique @map("key_hash") @db.VarChar(64)
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz
+  lastUsedIp  String?   @map("last_used_ip") @db.VarChar(45)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz
+  createdById String?   @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  client ApiClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("api_keys")
+}
+
+/// Log crudo de cada request a la Partner API. Sin FKs a propósito: es un log
+/// y no debe bloquear borrados ni romperse si cambian las entidades.
+model ApiUsageEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  clientId       String    @map("client_id") @db.Uuid
+  apiKeyId       String    @map("api_key_id") @db.Uuid
+  endpoint       String    @db.VarChar(100)
+  method         String    @db.VarChar(10)
+  statusCode     Int       @map("status_code") @db.SmallInt
+  durationMs     Int       @map("duration_ms")
+  /// UUID local de Property consultada (si aplica).
+  propertyId     String?   @map("property_id") @db.Uuid
+  checkin        DateTime? @db.Date
+  checkout       DateTime? @db.Date
+  /// true si la respuesta salió del caché (no pegó a Cloudbeds).
+  cacheHit       Boolean?  @map("cache_hit")
+  totalAvailable Int?      @map("total_available")
+  errorMessage   String?   @map("error_message") @db.VarChar(500)
+  ipAddress      String?   @map("ip_address") @db.VarChar(45)
+  userAgent      String?   @map("user_agent") @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([clientId, createdAt(sort: Desc)])
+  @@index([apiKeyId, createdAt(sort: Desc)])
+  @@index([propertyId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("api_usage_events")
+}
+
+/// Rol dentro de la organización cliente de la API.
+/// OWNER: email principal invitado por el admin. OWNER y ADMIN gestionan keys
+/// y usuarios; VIEWER solo ve las métricas.
+enum ApiClientMemberRole {
+  OWNER
+  ADMIN
+  VIEWER
+}
+
+/// Usuario de la plataforma que pertenece a una organización cliente de la API.
+/// Un usuario pertenece como máximo a una organización.
+model ApiClientMember {
+  id        String              @id @default(uuid()) @db.Uuid
+  clientId  String              @map("client_id") @db.Uuid
+  userId    String              @unique @map("user_id") @db.Uuid
+  role      ApiClientMemberRole
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  client ApiClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("api_client_members")
+}
+
+/// Invitación por email a una organización. El token viaja en el link del
+/// email; en DB solo se guarda su sha256.
+model ApiClientInvitation {
+  id          String              @id @default(uuid()) @db.Uuid
+  clientId    String              @map("client_id") @db.Uuid
+  email       String              @db.VarChar(255)
+  role        ApiClientMemberRole
+  tokenHash   String              @unique @map("token_hash") @db.VarChar(64)
+  invitedById String?             @map("invited_by_id") @db.Uuid
+  expiresAt   DateTime            @map("expires_at") @db.Timestamptz
+  acceptedAt  DateTime?           @map("accepted_at") @db.Timestamptz
+  revokedAt   DateTime?           @map("revoked_at") @db.Timestamptz
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
+
+  client ApiClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([email])
+  @@map("api_client_invitations")
 }

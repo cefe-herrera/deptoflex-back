@@ -29,6 +29,7 @@ import { HealthModule } from './modules/health/health.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CloudbedsModule } from './modules/cloudbeds/cloudbeds.module';
+import { PartnerApiModule } from './modules/partner-api/partner-api.module';
 import { PropertyFlexModule } from './modules/property-flex/property-flex.module';
 import { FlexBookingsModule } from './modules/flex-bookings/flex-bookings.module';
 import { AgendaModule } from './modules/agenda/agenda.module';
@@ -78,6 +79,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     AdminModule,
     NotificationsModule,
     CloudbedsModule,
+    PartnerApiModule,
     PropertyFlexModule,
     FlexBookingsModule,
     AgendaModule,
