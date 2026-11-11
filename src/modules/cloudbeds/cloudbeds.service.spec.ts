@@ -207,4 +207,108 @@ describe('CloudbedsService', () => {
       expect(out.rooms[0].roomTypeId).toBe('999');
     });
   });
+
+  describe('precio final por tarifa', () => {
+    const totals = (over: Record<string, unknown> = {}) => ({
+      subtotal: 57000,
+      taxesTotal: 14250,
+      feesTotal: 0,
+      grandTotal: 71250,
+      priceStatus: 'FINAL',
+      taxes: [
+        { id: '1', name: 'IVA', amount: 11970 },
+        { id: '2', name: 'Impuesto Municipal', amount: 2280 },
+      ],
+      fees: [],
+      ...over,
+    });
+
+    const run = async (provider: jest.Mocked<BookingProvider>, dto: Record<string, unknown> = {}) => {
+      provider.searchAvailability.mockResolvedValue(
+        buildResult({ rooms: [{ ...buildResult().rooms[0], rateId: '3280330', totalAmount: 57000 }] }),
+      );
+      const svc = new CloudbedsService(
+        fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: '256637' }),
+        fakeCache(),
+        fakeSnapshots(),
+        provider,
+      );
+      return svc.searchAvailability({
+        propertyId: '256637',
+        checkin: futureDate(7),
+        checkout: futureDate(8),
+        ...dto,
+      });
+    };
+
+    it('agrega el grandTotal del carrito como finalAmount con la ocupación de la búsqueda', async () => {
+      const provider = fakeProvider();
+      provider.calculateTotals.mockResolvedValue(totals() as never);
+      const out = await run(provider, { adults: 3, children: 1 });
+      expect(out.rooms[0]).toMatchObject({
+        totalAmount: 57000,
+        priceStatus: 'FINAL',
+        finalAmount: 71250,
+        taxesAndFeesAmount: 14250,
+        taxesAndFees: [
+          { name: 'IVA', amount: 11970 },
+          { name: 'Impuesto Municipal', amount: 2280 },
+        ],
+      });
+      expect(provider.calculateTotals).toHaveBeenCalledWith(
+        expect.objectContaining({
+          propertyExternalId: '256637',
+          rates: [{ rateId: '3280330', adults: 3, kids: 1 }],
+        }),
+      );
+    });
+
+    it('queda como SUBTOTAL si el carrito no confirma', async () => {
+      const provider = fakeProvider();
+      provider.calculateTotals.mockResolvedValue(totals({ priceStatus: 'SUBTOTAL' }) as never);
+      const out = await run(provider);
+      expect(out.rooms[0]).toMatchObject({ priceStatus: 'SUBTOTAL', finalAmount: null, totalAmount: 57000 });
+    });
+
+    it('priceQuotes=cheapest cotiza sólo la tarifa más barata de cada tipo de unidad', async () => {
+      const provider = fakeProvider();
+      provider.calculateTotals.mockResolvedValue(totals() as never);
+      const base = buildResult().rooms[0];
+      provider.searchAvailability.mockResolvedValue(
+        buildResult({
+          rooms: [
+            { ...base, rateId: 'std', totalAmount: 60000 },
+            { ...base, rateId: 'nr', totalAmount: 57000 },
+            { ...base, rateId: 'bk', totalAmount: 80000 },
+          ],
+        }),
+      );
+      const svc = new CloudbedsService(
+        fakePrisma({ id: 'p1', name: 'P', cloudbedsWidgetPropertyId: '256637' }),
+        fakeCache(),
+        fakeSnapshots(),
+        provider,
+      );
+      const out = await svc.searchAvailability({
+        propertyId: '256637',
+        checkin: futureDate(7),
+        checkout: futureDate(8),
+        priceQuotes: 'cheapest',
+      });
+      expect(provider.calculateTotals).toHaveBeenCalledTimes(1);
+      expect(provider.calculateTotals.mock.calls[0][0].rates[0].rateId).toBe('nr');
+      expect(out.rooms.map((r) => [r.rateId, r.priceStatus])).toEqual([
+        ['std', 'SUBTOTAL'],
+        ['nr', 'FINAL'],
+        ['bk', 'SUBTOTAL'],
+      ]);
+    });
+
+    it('queda como SUBTOTAL si el carrito falla', async () => {
+      const provider = fakeProvider();
+      provider.calculateTotals.mockRejectedValue(new Error('upstream'));
+      const out = await run(provider);
+      expect(out.rooms[0]).toMatchObject({ priceStatus: 'SUBTOTAL', finalAmount: null });
+    });
+  });
 });

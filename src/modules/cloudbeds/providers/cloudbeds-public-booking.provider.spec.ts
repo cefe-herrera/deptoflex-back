@@ -1,6 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { CloudbedsPublicBookingProvider } from './cloudbeds-public-booking.provider';
-import type { RawCloudbedsResponse } from './cloudbeds-response.schema';
+import { CloudbedsResponseSchema, type RawCloudbedsResponse } from './cloudbeds-response.schema';
 import type { ExternalRequestService } from '../external-request.service';
 
 describe('CloudbedsPublicBookingProvider', () => {
@@ -280,6 +280,149 @@ describe('CloudbedsPublicBookingProvider', () => {
       const [endpoint, body] = httpPostMock.mock.calls[0];
       expect(endpoint).toContain('/booking/rooms');
       expect(body).toContain('widget_property=179484');
+    });
+  });
+
+  describe('normalize — subtotal por plan (rate_id)', () => {
+    // Fragmento real (widget 288413, 2026-12-09 → 2026-12-13): cada plan es un
+    // room_type con su propio rate_id y tarifas por noche que ya incluyen el
+    // descuento/suplemento del plan.
+    const raw = {
+      total: 3,
+      room_types: [
+        {
+          room_type_id: '531507',
+          rate_id: '1645848',
+          room_type_name: 'Monoambientes',
+          room_type_title: 'Monoambientes',
+          rate_basic: 278000,
+          detailed_rates: [
+            { date: '2026-12-09', rate: 63000, base_rate: 63000 },
+            { date: '2026-12-10', rate: 63000, base_rate: 63000 },
+            { date: '2026-12-11', rate: 76000, base_rate: 76000 },
+            { date: '2026-12-12', rate: 76000, base_rate: 76000 },
+          ],
+          remaining: 5,
+        },
+        {
+          room_type_id: '531507',
+          rate_id: '3280333',
+          room_type_name: 'Monoambientes',
+          room_type_title: 'Monoambientes (No Reembolsable)',
+          rate_basic: 264100,
+          detailed_rates: [
+            { date: '2026-12-09', rate: 59850, base_rate: '63000.00' },
+            { date: '2026-12-10', rate: 59850, base_rate: '63000.00' },
+            { date: '2026-12-11', rate: 72200, base_rate: '76000.00' },
+            { date: '2026-12-12', rate: 72200, base_rate: '76000.00' },
+          ],
+          remaining: 5,
+        },
+      ],
+      ma_rates: false,
+    };
+
+    it('suma detailed_rates[].rate del plan seleccionado', () => {
+      const parsed = CloudbedsResponseSchema.parse(raw);
+      const result = provider.normalize(baseInput, parsed, 200, 1);
+      const byRate = Object.fromEntries(result.rooms.map((r) => [r.rateId, r.totalAmount]));
+      expect(byRate['1645848']).toBe(278000);
+      expect(byRate['3280333']).toBe(264100);
+    });
+  });
+
+  describe('calculateTotals (HTTP) — precio final', () => {
+    let httpPostMock: jest.SpyInstance;
+    afterEach(() => httpPostMock?.mockRestore?.());
+
+    const cart = (data: Record<string, unknown>) => ({
+      status: 200,
+      text: JSON.stringify({ success: true, statusCode: 200, data }),
+    });
+    const iva = (credit: number) => ({ id: '249055', name: 'IVA', credit });
+    const muni = (credit: number) => ({ id: '808993', name: 'Municipal', credit });
+
+    // Respuestas reales del carrito de Cloudbeds (widget 288413).
+    const cases = [
+      {
+        label: 'tarifa estándar, 1 noche',
+        rates: [{ rateId: '1645848', adults: 2, kids: 0 }],
+        data: {
+          days: 1, total: 63000, grandTotal: 78750, cntRooms: 1, totalAdults: 2, totalKids: 0,
+          taxes: { total: 15750, data: [iva(13230), muni(2520)] }, fees: { total: 0, data: [] },
+        },
+        expected: { subtotal: 63000, taxes: 15750, grandTotal: 78750 },
+      },
+      {
+        label: 'no reembolsable, 1 noche',
+        rates: [{ rateId: '3280333', adults: 2, kids: 0 }],
+        data: {
+          days: 1, total: 59850, grandTotal: 74812.5, cntRooms: 1, totalAdults: 2, totalKids: 0,
+          taxes: { total: 14962.5, data: [iva(12568.5), muni(2394)] }, fees: { total: 0, data: [] },
+        },
+        expected: { subtotal: 59850, taxes: 14962.5, grandTotal: 74812.5 },
+      },
+      {
+        label: 'no reembolsable, 4 noches',
+        rates: [{ rateId: '3280333', adults: 2, kids: 0 }],
+        data: {
+          days: 4, total: 264100, grandTotal: 330125, cntRooms: 1, totalAdults: 2, totalKids: 0,
+          taxes: { total: 66025, data: [iva(55461), muni(10564)] }, fees: { total: 0, data: [] },
+        },
+        expected: { subtotal: 264100, taxes: 66025, grandTotal: 330125 },
+      },
+      {
+        label: 'estándar, 3 noches, 2 unidades',
+        rates: [
+          { rateId: '1645848', adults: 2, kids: 0 },
+          { rateId: '1645848', adults: 2, kids: 0 },
+        ],
+        data: {
+          days: 3, total: 404000, grandTotal: 505000, cntRooms: 2, totalAdults: 4, totalKids: 0,
+          taxes: { total: 101000, data: [iva(84840), muni(16160)] }, fees: { total: 0, data: [] },
+        },
+        expected: { subtotal: 404000, taxes: 101000, grandTotal: 505000 },
+      },
+    ];
+
+    it.each(cases)('$label → FINAL con el grandTotal del carrito', async ({ rates, data, expected }) => {
+      httpPostMock = jest.spyOn(provider as any, 'httpPost').mockResolvedValue(cart(data));
+      const result = await provider.calculateTotals({ ...baseInput, rates });
+      expect(result.priceStatus).toBe('FINAL');
+      expect(result.priceStatusReason).toBeNull();
+      expect(result.subtotal).toBe(expected.subtotal);
+      expect(result.taxesTotal + result.feesTotal).toBe(expected.taxes);
+      expect(result.grandTotal).toBe(expected.grandTotal);
+    });
+
+    it('cae a SUBTOTAL si el carrito no refleja la ocupación pedida', async () => {
+      httpPostMock = jest.spyOn(provider as any, 'httpPost').mockResolvedValue(
+        cart({ ...cases[0].data, totalAdults: 2 }),
+      );
+      const result = await provider.calculateTotals({
+        ...baseInput,
+        rates: [{ rateId: '1645848', adults: 3, kids: 0 }],
+      });
+      expect(result.priceStatus).toBe('SUBTOTAL');
+      expect(result.priceStatusReason).toBe('selection_mismatch');
+    });
+
+    it('cae a SUBTOTAL si el desglose no cierra (p. ej. impuestos incluidos)', async () => {
+      httpPostMock = jest.spyOn(provider as any, 'httpPost').mockResolvedValue(
+        cart({ ...cases[0].data, grandTotal: 63000 }),
+      );
+      const result = await provider.calculateTotals({ ...baseInput, rates: cases[0].rates });
+      expect(result.priceStatus).toBe('SUBTOTAL');
+      expect(result.priceStatusReason).toBe('breakdown_mismatch');
+    });
+
+    it('cae a SUBTOTAL si faltan totales', async () => {
+      httpPostMock = jest.spyOn(provider as any, 'httpPost').mockResolvedValue(
+        cart({ ...cases[0].data, grandTotal: null }),
+      );
+      const result = await provider.calculateTotals({ ...baseInput, rates: cases[0].rates });
+      expect(result.priceStatus).toBe('SUBTOTAL');
+      expect(result.priceStatusReason).toBe('missing_totals');
     });
   });
 

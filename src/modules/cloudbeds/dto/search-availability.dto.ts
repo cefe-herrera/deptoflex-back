@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsIn,
   IsInt,
   IsISO8601,
   IsOptional,
@@ -51,4 +52,16 @@ export class SearchAvailabilityDto {
   @Min(0)
   @Max(20)
   children?: number;
+
+  @ApiPropertyOptional({
+    enum: ['all', 'cheapest'],
+    default: 'all',
+    description:
+      'Qué tarifas cotizar con el carrito de Cloudbeds para obtener el precio final (con impuestos y tasas). ' +
+      '"all": todas. "cheapest": sólo la más barata de cada tipo de unidad (suficiente para el precio "Desde"); ' +
+      'el resto queda con priceStatus=SUBTOTAL.',
+  })
+  @IsOptional()
+  @IsIn(['all', 'cheapest'])
+  priceQuotes?: 'all' | 'cheapest';
 }

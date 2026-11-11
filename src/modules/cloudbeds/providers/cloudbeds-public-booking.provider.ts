@@ -17,6 +17,7 @@ import {
   PrepareBookingResult,
   ReservationRedirectInput,
   SearchAvailabilityInput,
+  TotalsPriceStatus,
   TotalsRoomBreakdown,
   TotalsTaxOrFee,
 } from './booking-provider.interface';
@@ -291,7 +292,7 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     let errorMessage: string | undefined;
     try {
       this.logger.log(`httpPost endpoint=${this.totalsEndpoint} body=${body}`);
-      const { status, text } = await this.httpPost(this.totalsEndpoint, body);
+      const { status, text } = await this.httpPostWithRetry(this.totalsEndpoint, body);
       this.logger.log(`httpPost status=${status} text=${text.slice(0, 1000)}`);
       httpStatus = status;
       rawText = text;
@@ -300,7 +301,9 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
         this.logger.warn(
           `Cloudbeds totals returned non-OK status ${httpStatus} for property=${input.propertyExternalId} body="${rawText.slice(0, 500).replace(/\s+/g, ' ')}"`,
         );
-        throw new ServiceUnavailableException('Booking engine upstream error');
+        throw new ServiceUnavailableException(
+          status === 429 ? 'Booking engine rate limited' : 'Booking engine upstream error',
+        );
       }
 
       let json: unknown;
@@ -920,9 +923,13 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       baseRate: typeof d.base_rate === 'number' ? d.base_rate : d.rate,
     }));
 
+    // Subtotal de la estadía para UNA unidad del plan (`rate_id`): suma de las
+    // tarifas por noche, que ya incorporan el descuento/suplemento del plan.
+    // No incluye impuestos ni tasas cobrados aparte (ver calculateTotals).
     const totalAmount = (() => {
+      const sum = detailedRates.reduce((acc, r) => acc + r.rate, 0);
+      if (detailedRates.length > 0 && sum > 0) return sum;
       if (typeof rt.rate_basic === 'number' && rt.rate_basic > 0) return rt.rate_basic;
-      if (detailedRates.length > 0) return detailedRates.reduce((acc, r) => acc + r.rate, 0);
       return null;
     })();
 
@@ -1029,6 +1036,23 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
           : null,
     }));
 
+    const subtotal = this.numberOr(data.total, 0);
+    const taxesTotal = this.numberOr(data.taxes?.total, 0);
+    const feesTotal = this.numberOr(data.fees?.total, 0);
+    const grandTotal = this.numberOr(data.grandTotal, 0);
+    const totalAdults = this.numberOr(data.totalAdults, 0);
+    const totalKids = this.numberOr(data.totalKids, 0);
+    const cntRooms = this.numberOr(data.cntRooms, 0);
+    const pricing = this.evaluateTotalsPricing(input, {
+      subtotal,
+      taxesTotal,
+      feesTotal,
+      grandTotal,
+      totalAdults,
+      totalKids,
+      cntRooms,
+    });
+
     return {
       propertyExternalId: input.propertyExternalId,
       checkin: data.checkIn ?? input.checkin,
@@ -1036,15 +1060,17 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       currencyCode: input.currencyCode,
       days: this.numberOr(data.days, 0),
       rooms,
-      subtotal: this.numberOr(data.total, 0),
-      taxesTotal: this.numberOr(data.taxes?.total, 0),
-      feesTotal: this.numberOr(data.fees?.total, 0),
+      subtotal,
+      taxesTotal,
+      feesTotal,
       deposit: this.numberOr(data.deposit, 0),
-      grandTotal: this.numberOr(data.grandTotal, 0),
-      totalAdults: this.numberOr(data.totalAdults, 0),
-      totalKids: this.numberOr(data.totalKids, 0),
+      grandTotal,
+      priceStatus: pricing.status,
+      priceStatusReason: pricing.reason,
+      totalAdults,
+      totalKids,
       totalGuests: this.numberOr(data.totalGuests, 0),
-      cntRooms: this.numberOr(data.cntRooms, 0),
+      cntRooms,
       taxes: this.normalizeTaxFeeGroup(data.taxes),
       fees: this.normalizeTaxFeeGroup(data.fees),
       cartToken: data.cart_token ?? null,
@@ -1053,6 +1079,49 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       httpStatus,
       durationMs,
     };
+  }
+
+  /**
+   * Decide si el `grandTotal` del carrito de Cloudbeds es el precio final de
+   * la selección pedida. Cloudbeds aplica sus propias reglas de impuestos y
+   * tasas (porcentual/fijo, base, por reserva/habitación/noche/huésped), así
+   * que no recalculamos nada acá: sólo validamos que el carrito corresponda a
+   * la misma selección (unidades y ocupación) y que su desglose cierre
+   * (`subtotal + impuestos + tasas = grandTotal`). Si algo no cuadra (p. ej.
+   * impuestos incluidos en la tarifa u ocupación distinta), el importe se
+   * muestra como «Subtotal».
+   */
+  private evaluateTotalsPricing(
+    input: CalculateTotalsInput,
+    t: {
+      subtotal: number;
+      taxesTotal: number;
+      feesTotal: number;
+      grandTotal: number;
+      totalAdults: number;
+      totalKids: number;
+      cntRooms: number;
+    },
+  ): { status: TotalsPriceStatus; reason: string | null } {
+    const subtotalOnly = (reason: string) => ({ status: 'SUBTOTAL' as const, reason });
+    if (t.subtotal <= 0 || t.grandTotal <= 0) return subtotalOnly('missing_totals');
+
+    const expectedRooms = input.rates.length;
+    const expectedAdults = input.rates.reduce((acc, r) => acc + r.adults, 0);
+    const expectedKids = input.rates.reduce((acc, r) => acc + (r.kids ?? 0), 0);
+    if (
+      t.cntRooms !== expectedRooms ||
+      t.totalAdults !== expectedAdults ||
+      t.totalKids !== expectedKids
+    ) {
+      return subtotalOnly('selection_mismatch');
+    }
+
+    // Tolerancia de redondeo: 1 unidad de moneda.
+    if (Math.abs(t.subtotal + t.taxesTotal + t.feesTotal - t.grandTotal) > 1) {
+      return subtotalOnly('breakdown_mismatch');
+    }
+    return { status: 'FINAL', reason: null };
   }
 
   private normalizeTaxFeeGroup(group: RawTaxFeeGroup | null | undefined): TotalsTaxOrFee[] {

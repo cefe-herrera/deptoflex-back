@@ -130,7 +130,17 @@ export class PartnerApiService {
         maxAdults: r.maxAdults,
         maxChildren: r.maxChildren,
         remaining: r.remaining,
-        totalAmount: r.totalAmount,
+        /**
+         * Total de la estadía para una unidad: precio final (subtotal +
+         * impuestos y tasas cobrados aparte, según el carrito de Cloudbeds)
+         * cuando `priceStatus = FINAL`; si no, el subtotal.
+         */
+        totalAmount: r.priceStatus === 'FINAL' && r.finalAmount != null ? r.finalAmount : r.totalAmount,
+        priceStatus: r.priceStatus,
+        /** Suma de las tarifas por noche, sin impuestos ni tasas. */
+        subtotal: r.totalAmount,
+        taxesAndFeesAmount: r.taxesAndFeesAmount,
+        taxesAndFees: r.taxesAndFees,
         minNightlyRate: r.minNightlyRate,
         maxNightlyRate: r.maxNightlyRate,
         nightlyRates: r.detailedRates.map((d) => ({

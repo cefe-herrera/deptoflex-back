@@ -50,6 +50,10 @@ export interface AvailableRoom {
   maxChildren: number | null;
   remaining: number;
   totalRooms: number;
+  /**
+   * Subtotal de la estadía para UNA unidad del plan (`rateId`): suma de
+   * `detailed_rates[].rate`. No incluye impuestos ni tasas cobrados aparte.
+   */
   totalAmount: number | null;
   minNightlyRate: number | null;
   maxNightlyRate: number | null;
@@ -110,6 +114,13 @@ export interface TotalsRoomBreakdown {
   rateWithoutInclusiveTaxAndFees: number | null;
 }
 
+/**
+ * - `FINAL`: `grandTotal` es el precio final de la estadía según el carrito de
+ *   Cloudbeds (misma selección y desglose consistente).
+ * - `SUBTOTAL`: no se pudo confirmar; mostrar `subtotal` como «Subtotal».
+ */
+export type TotalsPriceStatus = 'FINAL' | 'SUBTOTAL';
+
 export interface CalculateTotalsResult {
   propertyExternalId: string;
   checkin: string;
@@ -122,6 +133,9 @@ export interface CalculateTotalsResult {
   feesTotal: number;
   deposit: number;
   grandTotal: number;
+  priceStatus: TotalsPriceStatus;
+  /** Motivo cuando `priceStatus = SUBTOTAL`: missing_totals | selection_mismatch | breakdown_mismatch. */
+  priceStatusReason: string | null;
   totalAdults: number;
   totalKids: number;
   totalGuests: number;

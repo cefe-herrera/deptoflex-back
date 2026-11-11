@@ -200,6 +200,8 @@ reintente el calculo.
   feesTotal: number;
   deposit: number;
   grandTotal: number;
+  priceStatus: 'FINAL' | 'SUBTOTAL';
+  priceStatusReason: string | null; // missing_totals | selection_mismatch | breakdown_mismatch
   totalAdults: number;
   totalKids: number;
   totalGuests: number;
@@ -213,7 +215,15 @@ reintente el calculo.
 
 ### Uso en UI
 
-- Mostrar `grandTotal` como total final.
+- `rooms[].totalAmount` de `/booking/search` es el **subtotal** de una unidad
+  (suma de `detailed_rates[].rate` del `rateId`); no incluye impuestos/tasas.
+  Rotularlo como «Subtotal».
+- Una unidad = una entrada en `rates[]` (con su ocupación real).
+- `priceStatus = FINAL` → mostrar `grandTotal` como «Precio final» con el
+  desglose `taxes[]`/`fees[]`. El backend lo marca FINAL sólo si el carrito
+  coincide con la selección (unidades, adultos, niños) y
+  `subtotal + taxesTotal + feesTotal = grandTotal`.
+- `priceStatus = SUBTOTAL` (o error) → mostrar `subtotal` como «Subtotal».
 - Mostrar desglose con `subtotal`, `taxesTotal`, `feesTotal` y `deposit`.
 - Guardar `cartToken` en state para el siguiente paso.
 - Si `cartToken === null`, bloquear confirmacion y permitir reintentar.

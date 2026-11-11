@@ -98,7 +98,7 @@ El partner le cobra al huésped **su comisión como seña** y se la queda. Wefle
 
 | Campo | Significado |
 |---|---|
-| `finalPrice` | Total de la reserva. Debe ser nuestra cotización (`totalAmount` de `/partner/availability`). |
+| `finalPrice` | Total de la reserva. Debe ser nuestra cotización (`totalAmount` de `/partner/availability`), que es el precio final con impuestos y tasas cuando `priceStatus = FINAL`. |
 | `partnerCommission` | Lo que cobró el partner. |
 | `netPrice` (DB) / `amountToCollect` (API) | `finalPrice − partnerCommission`: lo que cobra Weflex. |
 | `quotedPrice` | Nuestra cotización al momento de la solicitud. |
