@@ -329,6 +329,61 @@ describe('CloudbedsPublicBookingProvider', () => {
       expect(byRate['1645848']).toBe(278000);
       expect(byRate['3280333']).toBe(264100);
     });
+
+    it('expone el plan: tarifa estándar vs. oferta con nombre, condiciones y precio sin descuento', () => {
+      const withPackage = {
+        ...raw,
+        room_types: [
+          raw.room_types[0],
+          {
+            ...raw.room_types[1],
+            is_package: 1,
+            package_id: '77',
+            package_external_name: 'No Reembolsable',
+            package_internal_name: 'NR 5%',
+            package_desc: '<p>5% off</p>',
+            package_terms: '<p>Sin devolución</p>',
+            package_src: '',
+          },
+        ],
+      };
+      const result = provider.normalize(baseInput, CloudbedsResponseSchema.parse(withPackage), 200, 1);
+      const [std, nr] = result.rooms;
+      expect(std.ratePlan).toEqual({
+        isPackage: false,
+        packageId: null,
+        name: 'Tarifa estándar',
+        descriptionHtml: null,
+        termsHtml: null,
+        imageUrl: null,
+        baseTotalAmount: null,
+      });
+      expect(nr.ratePlan).toEqual({
+        isPackage: true,
+        packageId: '77',
+        name: 'No Reembolsable',
+        descriptionHtml: '<p>5% off</p>',
+        termsHtml: '<p>Sin devolución</p>',
+        imageUrl: null,
+        baseTotalAmount: 278000,
+      });
+    });
+
+    it('si falta package_external_name usa el plan entre paréntesis del título', () => {
+      const parsed = CloudbedsResponseSchema.parse({
+        ...raw,
+        room_types: [{ ...raw.room_types[1], is_package: true }],
+      });
+      expect(provider.normalize(baseInput, parsed, 200, 1).rooms[0].ratePlan.name).toBe('No Reembolsable');
+    });
+
+    it('un valor de package_* con tipo inesperado no rompe la búsqueda', () => {
+      const parsed = CloudbedsResponseSchema.parse({
+        ...raw,
+        room_types: [{ ...raw.room_types[0], is_package: null, package_desc: { x: 1 } }],
+      });
+      expect(provider.normalize(baseInput, parsed, 200, 1).rooms[0].ratePlan.name).toBe('Tarifa estándar');
+    });
   });
 
   describe('calculateTotals (HTTP) — precio final', () => {

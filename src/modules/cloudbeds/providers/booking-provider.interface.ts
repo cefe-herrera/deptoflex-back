@@ -39,9 +39,29 @@ export interface OtaRateComparison {
   directPrice: number;
 }
 
+/** Plan tarifario («oferta») de Cloudbeds: No Reembolsable, con desayuno, etc. */
+export interface RatePlan {
+  /** true si es un paquete/oferta; false para la tarifa estándar. */
+  isPackage: boolean;
+  packageId: string | null;
+  /** Nombre visible para el huésped («No Reembolsable», «Tarifa estándar»). */
+  name: string;
+  /** Descripción del plan (HTML del operador — sanitizar antes de renderizar). */
+  descriptionHtml: string | null;
+  /** Condiciones del plan (HTML del operador — sanitizar antes de renderizar). */
+  termsHtml: string | null;
+  imageUrl: string | null;
+  /**
+   * Subtotal sin el descuento/suplemento del plan (suma de base_rate). Sólo se
+   * informa si difiere de `totalAmount` (p. ej. 60.000 tachado → 57.000).
+   */
+  baseTotalAmount: number | null;
+}
+
 export interface AvailableRoom {
   roomTypeId: string;
   rateId: string | null;
+  ratePlan: RatePlan;
   name: string;
   title: string;
   descriptionHtml: string | null;

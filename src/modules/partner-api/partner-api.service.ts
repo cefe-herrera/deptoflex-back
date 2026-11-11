@@ -136,6 +136,15 @@ export class PartnerApiService {
          * cuando `priceStatus = FINAL`; si no, el subtotal.
          */
         totalAmount: r.priceStatus === 'FINAL' && r.finalAmount != null ? r.finalAmount : r.totalAmount,
+        /** Plan tarifario («oferta»): No Reembolsable, con desayuno, Tarifa estándar… */
+        ratePlan: {
+          name: r.ratePlan.name,
+          isPackage: r.ratePlan.isPackage,
+          descriptionHtml: r.ratePlan.descriptionHtml,
+          termsHtml: r.ratePlan.termsHtml,
+          /** Subtotal sin el descuento/suplemento del plan, si difiere. */
+          baseSubtotal: r.ratePlan.baseTotalAmount,
+        },
         priceStatus: r.priceStatus,
         /** Suma de las tarifas por noche, sin impuestos ni tasas. */
         subtotal: r.totalAmount,

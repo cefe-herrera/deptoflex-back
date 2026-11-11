@@ -55,6 +55,7 @@ const buildResult = (overrides: Partial<AvailabilityResult> = {}): AvailabilityR
     {
       roomTypeId: '249030',
       rateId: '551718',
+      ratePlan: { isPackage: false, packageId: null, name: 'Tarifa estándar', descriptionHtml: null, termsHtml: null, imageUrl: null, baseTotalAmount: null },
       name: 'Mono',
       title: 'Mono',
       descriptionHtml: null,

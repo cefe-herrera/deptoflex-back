@@ -62,6 +62,16 @@ const RoomTypeSchema = z.object({
   photos_gallery: z.array(z.string()).optional(),
   features: z.array(z.string()).optional(),
   unit_ids: z.array(z.string()).optional(),
+  // Plan/oferta (rate plan "package"). Tipos no garantizados por Cloudbeds:
+  // se aceptan como unknown y se normalizan en el provider para que un valor
+  // inesperado nunca rompa la búsqueda.
+  is_package: z.unknown().optional(),
+  package_id: z.unknown().optional(),
+  package_external_name: z.unknown().optional(),
+  package_internal_name: z.unknown().optional(),
+  package_desc: z.unknown().optional(),
+  package_terms: z.unknown().optional(),
+  package_src: z.unknown().optional(),
 });
 
 const MaRateChannelSchema = z.object({

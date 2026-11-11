@@ -13,6 +13,7 @@ import {
   ConfirmationResult,
   NightlyRate,
   OtaRateComparison,
+  RatePlan,
   PrepareBookingInput,
   PrepareBookingResult,
   ReservationRedirectInput,
@@ -954,6 +955,7 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
     return {
       roomTypeId: String(rt.room_type_id),
       rateId: rt.rate_id != null ? String(rt.rate_id) : null,
+      ratePlan: this.normalizeRatePlan(rt, detailedRates, totalAmount),
       name: rt.room_type_name ?? rt.room_type_title ?? `Room ${rt.room_type_id}`,
       title: rt.room_type_title ?? rt.room_type_name ?? `Room ${rt.room_type_id}`,
       descriptionHtml: rt.room_type_desc ?? null,
@@ -971,6 +973,57 @@ export class CloudbedsPublicBookingProvider implements BookingProvider {
       features,
       unitIds,
       otaComparison: ota.length > 0 ? ota : undefined,
+    };
+  }
+
+  /**
+   * Plan tarifario de la tarifa. Cloudbeds marca las ofertas con `is_package`
+   * y campos `package_*`; la tarifa sin paquete es la «Tarifa estándar» (igual
+   * que la muestra el motor de reservas de Cloudbeds).
+   */
+  private normalizeRatePlan(
+    rt: RawRoomType,
+    detailedRates: NightlyRate[],
+    totalAmount: number | null,
+  ): RatePlan {
+    const str = (v: unknown): string | null =>
+      typeof v === 'string' && v.trim().length > 0
+        ? v.trim()
+        : typeof v === 'number'
+          ? String(v)
+          : null;
+    const truthy = (v: unknown): boolean =>
+      v === true || v === 1 || v === '1' || v === 'true';
+
+    const externalName = str(rt.package_external_name);
+    const packageId = str(rt.package_id);
+    const isPackage =
+      truthy(rt.is_package) || (externalName != null && packageId != null && packageId !== '0');
+
+    // Fallback: el título trae el plan entre paréntesis, p. ej.
+    // "Monoambientes (No Reembolsable)".
+    const fromTitle = (() => {
+      const title = rt.room_type_title ?? '';
+      const name = rt.room_type_name ?? '';
+      if (!title.startsWith(name)) return null;
+      const m = title.slice(name.length).trim().match(/^\((.*)\)$/s);
+      return m ? m[1].trim() : null;
+    })();
+
+    const baseTotal = detailedRates.reduce((acc, r) => acc + r.baseRate, 0);
+    const baseTotalAmount =
+      totalAmount != null && detailedRates.length > 0 && Math.abs(baseTotal - totalAmount) > 0.5
+        ? baseTotal
+        : null;
+
+    return {
+      isPackage,
+      packageId: isPackage ? packageId : null,
+      name: isPackage ? externalName ?? fromTitle ?? 'Oferta' : 'Tarifa estándar',
+      descriptionHtml: isPackage ? str(rt.package_desc) : null,
+      termsHtml: isPackage ? str(rt.package_terms) : null,
+      imageUrl: isPackage ? str(rt.package_src) : null,
+      baseTotalAmount,
     };
   }
 
