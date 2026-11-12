@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import { AmbassadorAccessService } from '../../common/services/ambassador-access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CommissionRatesService } from '../commissions/commission-rates.service';
 import { CloudbedsService } from './cloudbeds.service';
@@ -43,7 +44,23 @@ export class ReservationIntentsService {
     private readonly notifications: NotificationsService,
     private readonly commissionRates: CommissionRatesService,
     @Inject(BOOKING_PROVIDER) private readonly provider: BookingProvider,
+    private readonly ambassadorAccess: AmbassadorAccessService,
   ) {}
+
+  /**
+   * Perfil de embajador del usuario autenticado, si puede operar como tal.
+   * La atribución de reservas/comisiones sale SOLO de acá (nunca del body),
+   * para que nadie pueda asignarse la comisión de otro.
+   */
+  private async resolveCallerAmbassadorProfileId(userId?: string): Promise<string | null> {
+    if (!userId) return null;
+    try {
+      const { profileId } = await this.ambassadorAccess.assertCanOperateAsAmbassador(userId);
+      return profileId;
+    } catch {
+      return null;
+    }
+  }
 
   async create(
     dto: CreateReservationIntentDto,
@@ -129,7 +146,7 @@ export class ReservationIntentsService {
         redirectUrl,
         status: 'PENDING',
         userId: context.userId ?? null,
-        professionalProfileId: dto.professionalProfileId ?? null,
+        professionalProfileId: await this.resolveCallerAmbassadorProfileId(context.userId),
         ipAddress: context.ipAddress ?? null,
         userAgent: context.userAgent ?? null,
         expiresAt,
@@ -159,6 +176,9 @@ export class ReservationIntentsService {
       : null;
     if (dto.reservationIntentId && !intent) {
       throw new NotFoundException('Reservation intent not found');
+    }
+    if (intent?.status === 'EXPIRED') {
+      throw new BadRequestException('Reservation intent expired');
     }
 
     const conf = await this.provider.getConfirmation({
@@ -195,7 +215,12 @@ export class ReservationIntentsService {
       }
     }
 
-    const professionalProfileId = dto.professionalProfileId ?? intent?.professionalProfileId ?? null;
+    // Atribución: la de la intent (fijada server-side al crearla) o, sin intent,
+    // el embajador autenticado que confirma. `dto.professionalProfileId` se
+    // ignora: el endpoint es público y permitiría asignarse comisiones ajenas.
+    const professionalProfileId = intent
+      ? intent.professionalProfileId ?? null
+      : await this.resolveCallerAmbassadorProfileId(logContext?.userId);
 
     // Dates: prefer the intent (server-validated), fall back to the parsed page.
     const checkInStr = intent ? intent.checkin.toISOString().slice(0, 10) : conf.checkin;

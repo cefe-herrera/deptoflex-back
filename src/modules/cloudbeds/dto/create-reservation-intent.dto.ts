@@ -18,7 +18,9 @@ export class CreateReservationIntentDto {
   propertyId: string;
 
   @ApiPropertyOptional({
-    description: 'Embajador (professional profile) que origina la intención de reserva.',
+    description:
+      '[Deprecado, se ignora] El embajador se toma del usuario autenticado. Se acepta solo por compatibilidad con clientes viejos.',
+    deprecated: true,
   })
   @IsOptional()
   @IsUUID()

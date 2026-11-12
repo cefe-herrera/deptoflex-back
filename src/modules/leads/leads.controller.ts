@@ -33,6 +33,7 @@ export class LeadsController {
   }
 
   @Get()
+  @Roles('ADMIN', 'OPERATOR', 'PROFESSIONAL', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Listar leads',
     description: 'Devuelve los leads paginados. ADMIN/OPERATOR ven todos; profesionales y embajadores ven solo los propios.',
@@ -48,23 +49,29 @@ export class LeadsController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'OPERATOR', 'PROFESSIONAL', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Obtener un lead por ID',
-    description: 'Devuelve el detalle completo del lead, incluyendo notas y conversiones a booking.',
+    description: 'Devuelve el detalle completo del lead, incluyendo notas y conversiones a booking. Profesionales y embajadores solo ven los propios.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.leadsService.findOne(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.leadsService.findOneForUser(id, user);
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'OPERATOR', 'PROFESSIONAL', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Actualizar un lead',
-    description: 'Modifica datos del lead (estado, contacto, observaciones, etc.).',
+    description: 'Modifica datos del lead (estado, contacto, observaciones, etc.). Profesionales y embajadores solo los propios.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateLeadDto) {
-    return this.leadsService.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateLeadDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.leadsService.update(id, dto, user);
   }
 
   @Delete(':id')
@@ -80,6 +87,7 @@ export class LeadsController {
   }
 
   @Post(':id/notes')
+  @Roles('ADMIN', 'OPERATOR', 'PROFESSIONAL', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Agregar una nota al lead',
     description: 'Agrega una nota interna al lead, registrando el autor (usuario actual). Útil para tracking de seguimiento.',
@@ -90,13 +98,14 @@ export class LeadsController {
     @Body() dto: AddNoteDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.leadsService.addNote(id, dto, user.id);
+    return this.leadsService.addNote(id, dto, user);
   }
 
   @Post(':id/convert-to-booking')
+  @Roles('ADMIN', 'OPERATOR')
   @ApiOperation({
     summary: 'Convertir lead a reserva',
-    description: 'Crea una reserva a partir del lead y dispara el cálculo de comisiones para el referente. El lead queda marcado como convertido.',
+    description: 'Crea una reserva a partir del lead y dispara el cálculo de comisiones para el referente. El lead queda marcado como convertido. Solo ADMIN/OPERATOR (los montos de la reserva vienen en el body).',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   convertToBooking(

@@ -19,7 +19,8 @@ export class ConfirmReservationDto {
 
   @ApiPropertyOptional({
     description:
-      'Embajador (professional profile) al que se atribuye la reserva y la comisión. Tiene prioridad sobre el de la intent.',
+      '[Deprecado, se ignora] La atribución al embajador sale de la intent o del usuario autenticado. Se acepta solo por compatibilidad con clientes viejos.',
+    deprecated: true,
   })
   @IsOptional()
   @IsUUID()

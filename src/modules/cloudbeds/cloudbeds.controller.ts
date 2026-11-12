@@ -109,11 +109,12 @@ export class CloudbedsController {
   @Public()
   @Throttle({ booking: { limit: 20, ttl: 60_000 } })
   @Post('booking/confirm')
+  @UseGuards(OptionalJwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Confirmar reserva Cloudbeds y registrarla en nuestro sistema',
     description:
-      'Recibe el token `data_res` devuelto por Cloudbeds en la URL de confirmación, descarga y parsea la página de confirmación, y registra la reserva en nuestro sistema como `Booking` (source=CLOUDBEDS, status=CONFIRMED) junto con su `Commission`. Si se pasa `reservationIntentId`, se usa para resolver propiedad, embajador y fechas canónicas. Idempotente por id de reserva de Cloudbeds.',
+      'Recibe el token `data_res` devuelto por Cloudbeds en la URL de confirmación, descarga y parsea la página de confirmación, y registra la reserva en nuestro sistema como `Booking` (source=CLOUDBEDS, status=CONFIRMED) junto con su `Commission`. Si se pasa `reservationIntentId`, se usa para resolver propiedad, embajador y fechas canónicas; si no, la comisión se atribuye al embajador autenticado (si lo hay). Idempotente por id de reserva de Cloudbeds.',
   })
   confirmReservation(
     @Body() dto: ConfirmReservationDto,

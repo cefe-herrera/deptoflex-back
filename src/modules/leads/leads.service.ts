@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
@@ -38,9 +39,13 @@ export class LeadsService {
     const where: any = { deletedAt: null };
 
     const isAdmin = roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
-    if (!isAdmin && userId) {
-      const profile = await this.prisma.professionalProfile.findUnique({ where: { userId } });
-      if (profile) where.professionalProfileId = profile.id;
+    if (!isAdmin) {
+      const profile = userId
+        ? await this.prisma.professionalProfile.findUnique({ where: { userId } })
+        : null;
+      // Sin perfil propio no hay leads propios: nunca caer en "ver todos".
+      if (!profile) return { items: [], total: 0, page, limit };
+      where.professionalProfileId = profile.id;
     }
 
     const [items, total] = await Promise.all([
@@ -70,8 +75,26 @@ export class LeadsService {
     return lead;
   }
 
-  async update(id: string, dto: UpdateLeadDto) {
-    await this.findOne(id);
+  /**
+   * Como `findOne`, pero solo si el usuario puede verlo: ADMIN/OPERATOR siempre;
+   * el resto, solo leads de su propio perfil. 404 (no 403) para no revelar ids.
+   */
+  async findOneForUser(id: string, user: CurrentUserPayload) {
+    const lead = await this.findOne(id);
+    const isStaff = user.roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
+    if (isStaff) return lead;
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile || lead.professionalProfileId !== profile.id) {
+      throw new NotFoundException('Lead not found');
+    }
+    return lead;
+  }
+
+  async update(id: string, dto: UpdateLeadDto, user: CurrentUserPayload) {
+    await this.findOneForUser(id, user);
     return this.prisma.lead.update({
       where: { id },
       data: {
@@ -82,9 +105,9 @@ export class LeadsService {
     });
   }
 
-  async addNote(leadId: string, dto: AddNoteDto, createdById: string) {
-    await this.findOne(leadId);
-    return this.prisma.leadRequest.create({ data: { leadId, createdById, message: dto.message } });
+  async addNote(leadId: string, dto: AddNoteDto, user: CurrentUserPayload) {
+    await this.findOneForUser(leadId, user);
+    return this.prisma.leadRequest.create({ data: { leadId, createdById: user.id, message: dto.message } });
   }
 
   async convertToBooking(leadId: string, dto: ConvertToBookingDto, changedById: string) {

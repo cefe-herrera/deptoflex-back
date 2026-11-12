@@ -28,12 +28,13 @@ export class FlexBookingsController {
   }
 
   @Get()
+  @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Listar reservas flex',
-    description: 'Devuelve reservas flex paginadas con filtros por propiedad, profesional, estado y rango de fechas.',
+    description: 'Devuelve reservas flex paginadas con filtros por propiedad, profesional, estado y rango de fechas. ADMIN/OPERATOR ven todas; AMBASSADOR solo las propias.',
   })
-  findAll(@Query() query: QueryFlexBookingDto) {
-    return this.flexBookingsService.findAll(query);
+  findAll(@Query() query: QueryFlexBookingDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.flexBookingsService.findAll(query, user);
   }
 
   @Get(':id/payment-link')
@@ -66,13 +67,14 @@ export class FlexBookingsController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'OPERATOR', 'AMBASSADOR')
   @ApiOperation({
     summary: 'Obtener reserva flex por ID',
-    description: 'Devuelve el detalle de una reserva flex con la propiedad flex asociada.',
+    description: 'Devuelve el detalle de una reserva flex con la propiedad flex asociada. AMBASSADOR solo puede ver las propias.',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.flexBookingsService.findOne(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.flexBookingsService.findOneForUser(id, user);
   }
 
   @Patch(':id')

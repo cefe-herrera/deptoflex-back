@@ -245,9 +245,23 @@ export class FlexBookingsService {
     return this.flexBookingPayments.resendPaymentEmail(id, user);
   }
 
-  async findAll(query: QueryFlexBookingDto) {
-    const { page = 1, limit = 20, propertyFlexId, professionalProfileId, status, startDateFrom, startDateTo } = query;
+  /** null = staff (ve todo); string = id del perfil propio; lanza si no tiene perfil. */
+  private async ownProfileScope(user: CurrentUserPayload): Promise<string | null> {
+    const isStaff = user.roles?.some((r) => ['ADMIN', 'OPERATOR'].includes(r));
+    if (isStaff) return null;
+    const profile = await this.prisma.professionalProfile.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!profile) throw new ForbiddenException('No tenés acceso a estas reservas');
+    return profile.id;
+  }
+
+  async findAll(query: QueryFlexBookingDto, user: CurrentUserPayload) {
+    const { page = 1, limit = 20, propertyFlexId, status, startDateFrom, startDateTo } = query;
     const skip = (page - 1) * limit;
+    const ownProfileId = await this.ownProfileScope(user);
+    const professionalProfileId = ownProfileId ?? query.professionalProfileId;
 
     const where: any = {
       deletedAt: null,
@@ -282,6 +296,16 @@ export class FlexBookingsService {
       },
     });
     if (!booking) throw new NotFoundException('FlexBooking not found');
+    return booking;
+  }
+
+  async findOneForUser(id: string, user: CurrentUserPayload) {
+    const booking = await this.findOne(id);
+    const ownProfileId = await this.ownProfileScope(user);
+    if (ownProfileId && booking.professionalProfileId !== ownProfileId) {
+      // 404 en vez de 403 para no confirmar que el id existe.
+      throw new NotFoundException('FlexBooking not found');
+    }
     return booking;
   }
 
